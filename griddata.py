@@ -22,7 +22,7 @@ import simbench as sb
 import parameters as par
 
 ###############################################################################
-## FUNCTIONS ##
+## AUXILIARY FUNCTIONS ##
 ###############################################################################
 
 def reorder_buses_and_update_references(net):
@@ -63,6 +63,78 @@ def reorder_lines(net):
 
     return net
 
+def append_zeros_to_buses(net):
+    """
+    Append '00' to all bus indices in a pandapower network and update all references.
+
+    Parameters:
+    - net: pandapower network
+
+    Returns:
+    - Updated pandapower network
+    """
+    # Create a mapping of old indices to new indices
+    bus_mapping = {bus: int(f"{bus}00") for bus in net.bus.index}
+
+    # Update references in all elements of the network
+    for element in ["line", "trafo", "trafo3w", "load", "gen", "sgen", "shunt", "ext_grid", "ward", "xward", "dcline", "switch"]:
+        if element in net and not net[element].empty:
+            for col in net[element].columns:
+                if "bus" in col:  # Look for columns containing "bus"
+                    net[element][col] = net[element][col].replace(bus_mapping)
+
+    # Update references in line "to_bus" and "from_bus"
+    if "line" in net and not net.line.empty:
+        net.line["from_bus"] = net.line["from_bus"].replace(bus_mapping)
+        net.line["to_bus"] = net.line["to_bus"].replace(bus_mapping)
+
+    # Update references in trafo "hv_bus" and "lv_bus"
+    if "trafo" in net and not net.trafo.empty:
+        net.trafo["hv_bus"] = net.trafo["hv_bus"].replace(bus_mapping)
+        net.trafo["lv_bus"] = net.trafo["lv_bus"].replace(bus_mapping)
+
+    # Update references in trafo3w "hv_bus", "mv_bus", and "lv_bus"
+    if "trafo3w" in net and not net.trafo3w.empty:
+        net.trafo3w["hv_bus"] = net.trafo3w["hv_bus"].replace(bus_mapping)
+        net.trafo3w["mv_bus"] = net.trafo3w["mv_bus"].replace(bus_mapping)
+        net.trafo3w["lv_bus"] = net.trafo3w["lv_bus"].replace(bus_mapping)
+
+    # Rename the bus indices
+    net.bus.rename(index=bus_mapping, inplace=True)
+
+    return net
+
+def reindex_bus(net, old_index, new_index):
+    # Update references in all elements of the network
+    for element in ["line", "trafo", "trafo3w", "load", "gen", "sgen", "shunt", "ext_grid", "ward", "xward", "dcline", "switch"]:
+        if element in net and not net[element].empty:
+            for col in net[element].columns:
+                if "bus" in col:  # Look for columns containing "bus"
+                    net[element][col] = net[element][col].replace({old_index: new_index})
+
+    # Update references in line "to_bus" and "from_bus"
+    if "line" in net and not net.line.empty:
+        net.line["from_bus"] = net.line["from_bus"].replace({old_index: new_index})
+        net.line["to_bus"] = net.line["to_bus"].replace({old_index: new_index})
+
+    # Update references in trafo "hv_bus" and "lv_bus"
+    if "trafo" in net and not net.trafo.empty:
+        net.trafo["hv_bus"] = net.trafo["hv_bus"].replace({old_index: new_index})
+        net.trafo["lv_bus"] = net.trafo["lv_bus"].replace({old_index: new_index})
+
+    # Update references in trafo3w "hv_bus", "mv_bus", and "lv_bus"
+    if "trafo3w" in net and not net.trafo3w.empty:
+        net.trafo3w["hv_bus"] = net.trafo3w["hv_bus"].replace({old_index: new_index})
+        net.trafo3w["mv_bus"] = net.trafo3w["mv_bus"].replace({old_index: new_index})
+        net.trafo3w["lv_bus"] = net.trafo3w["lv_bus"].replace({old_index: new_index})
+
+    # Rename the bus index
+    net.bus.rename(index={old_index: new_index}, inplace=True)
+
+
+###############################################################################
+## MAIN FUNCTION ##
+###############################################################################
 def setup_grid_powertech25(season):
     sb_code1 = "1-LV-semiurb4--0-no_sw"  # rural MV grid of scenario 0 with full switches
     net = sb.get_simbench_net(sb_code1)
@@ -93,14 +165,56 @@ def setup_grid_powertech25(season):
     # Remove Sgen
     net.sgen.drop(net.sgen.index, inplace=True)
 
+    net = append_zeros_to_buses(net)
+    reindex_bus(net, old_index=1500, new_index=1)
+    reindex_bus(net, old_index=2100, new_index=2)
+    reindex_bus(net, old_index=800, new_index=3)
+    reindex_bus(net, old_index=3200, new_index=4)
+    reindex_bus(net, old_index=200, new_index=5)
+    reindex_bus(net, old_index=300, new_index=6)
+    reindex_bus(net, old_index=1200, new_index=7)
+    reindex_bus(net, old_index=100, new_index=8)
+    reindex_bus(net, old_index=2300, new_index=9)
+    reindex_bus(net, old_index=1600, new_index=10)
+    reindex_bus(net, old_index=1800, new_index=11)
+    reindex_bus(net, old_index=1700, new_index=12)
+    reindex_bus(net, old_index=500, new_index=13)
+    reindex_bus(net, old_index=2200, new_index=14)
+    reindex_bus(net, old_index=2800, new_index=15)
+    reindex_bus(net, old_index=700, new_index=16)
+    reindex_bus(net, old_index=1000, new_index=17)
+    reindex_bus(net, old_index=600, new_index=18)
+    reindex_bus(net, old_index=2400, new_index=19)
+    reindex_bus(net, old_index=3000, new_index=20)
+    reindex_bus(net, old_index=1300, new_index=21)
+    reindex_bus(net, old_index=400, new_index=22)
+    reindex_bus(net, old_index=3100, new_index=23)
+    reindex_bus(net, old_index=2700, new_index=24)
+    reindex_bus(net, old_index=3300, new_index=25)
+    reindex_bus(net, old_index=2500, new_index=26)
+    reindex_bus(net, old_index=2000, new_index=27)
+    reindex_bus(net, old_index=2600, new_index=28)
+    reindex_bus(net, old_index=2900, new_index=29)
+    reindex_bus(net, old_index=3500, new_index=30)
+    reindex_bus(net, old_index=3600, new_index=31)
+    reindex_bus(net, old_index=3700, new_index=32)
+    reindex_bus(net, old_index=3800, new_index=33)
+    reindex_bus(net, old_index=4100, new_index=34)
+    reindex_bus(net, old_index=4200, new_index=35)
+    reindex_bus(net, old_index=4300, new_index=36)
+    reindex_bus(net, old_index=3900, new_index=37)
+    reindex_bus(net, old_index=4000, new_index=38)
+    reindex_bus(net, old_index=1100, new_index=39)
+
     ############################################################################################################
     # Add Household Loads
     ############################################################################################################
     # Load the normalized household profile
-    df_household = pd.read_csv("realData_winter.csv", sep=';')
-    df_household['P_HOUSEHOLD'] = df_household['P_HOUSEHOLD'].str.replace(",", ".").astype(float)
-    df_household['P_HOUSEHOLD_NORM'] = df_household['P_HOUSEHOLD'] / df_household['P_HOUSEHOLD'].max()
-    time_steps = df_household.index
+    df_household_prognosis = pd.read_csv("householdPrognosis.csv", sep=';')
+    df_season_household_prognosis = df_household_prognosis[df_household_prognosis['season'] == season]
+    df_season_household_prognosis['meanP'] = df_season_household_prognosis['meanP'].str.replace(",", ".").astype(float)
+    df_season_household_prognosis['P_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanP'] / df_season_household_prognosis['meanP'].max()
+    time_steps = df_season_household_prognosis.index
 
 
     household_loads = net.load[net.load['name'].str.startswith("LV4.101")]
@@ -108,9 +222,9 @@ def setup_grid_powertech25(season):
     for load_idx in household_loads.index:
         net.load.at[load_idx, 'controllable'] = False
 
-        # Create a scaled profile DataFrame
+    # Create a scaled profile DataFrame
     scaled_household_profiles = pd.DataFrame(
-        df_household['P_HOUSEHOLD_NORM'].values[:, None] * household_scaling_factors / par.hh_scaling,
+        df_season_household_prognosis['P_HOUSEHOLD_NORM'].values[:, None] * household_scaling_factors / par.hh_scaling,
         columns=household_loads.index
     )
 
@@ -130,8 +244,8 @@ def setup_grid_powertech25(season):
     ############################################################################################################
     # Add Heat Pump
     ############################################################################################################
-    # Locate the load at bus 24
-    hp_index = net.load[net.load.bus == 24].index
+    # Locate the load at bus 29
+    hp_index = net.load[net.load.bus == 29].index
 
     # Update the load name to start with "HP" instead of "LV4"
     net.load.loc[hp_index, 'name'] = net.load.loc[hp_index, 'name'].str.replace(r"^LV4", "HP", regex=True)
@@ -165,7 +279,7 @@ def setup_grid_powertech25(season):
 
     # Create a scaled heatpump profile DataFrame
     df_season_heatpump_prognosis_scaled = pd.DataFrame(
-        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values,
+        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
         columns=heatpump_loads.index
     )
 
@@ -182,4 +296,5 @@ def setup_grid_powertech25(season):
         data_source=ds_scaled_heatpump_profiles
     )
 
-    return net, const_load_household, const_load_heatpump, time_steps, df_household, df_season_heatpump_prognosis
+    return net, const_load_household, const_load_heatpump, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df
+
