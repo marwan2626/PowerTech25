@@ -135,7 +135,7 @@ def reindex_bus(net, old_index, new_index):
 ###############################################################################
 ## MAIN FUNCTION ##
 ###############################################################################
-def setup_grid_powertech25(season):
+def setup_grid_powertech255(season):
     sb_code1 = "1-LV-semiurb4--0-no_sw"  # rural MV grid of scenario 0 with full switches
     net = sb.get_simbench_net(sb_code1)
     net = reorder_buses_and_update_references(net)
@@ -252,6 +252,151 @@ def setup_grid_powertech25(season):
 
     # Set 'controllable' to True
     net.load.loc[hp_index, 'controllable'] = True
+
+    heatpump_loads = net.load[net.load['name'].str.startswith("HP.101")]
+
+    # Load the heatpump prognosis profile CSV and filter by season
+    df_heatpump_prognosis = pd.read_csv("heatpumpPrognosis.csv", sep=';')
+    df_season_heatpump_prognosis = df_heatpump_prognosis[df_heatpump_prognosis['season'] == season]
+        
+    # Process load profile for bus 1
+    df_season_heatpump_prognosis['meanP'] = df_season_heatpump_prognosis['meanP'].str.replace(",", ".").astype(float)
+    df_season_heatpump_prognosis['stdP'] = df_season_heatpump_prognosis['stdP'].str.replace(",", ".").astype(float)
+    df_season_heatpump_prognosis['meanQ'] = df_season_heatpump_prognosis['meanQ'].str.replace(",", ".").astype(float)
+    df_season_heatpump_prognosis['stdQ'] = df_season_heatpump_prognosis['stdQ'].str.replace(",", ".").astype(float)
+        
+    df_season_heatpump_prognosis['meanP_NORM'] = df_season_heatpump_prognosis['meanP'] / df_season_heatpump_prognosis['meanP'].max()
+    df_season_heatpump_prognosis['stdP_NORM'] = df_season_heatpump_prognosis['stdP'] / df_season_heatpump_prognosis['meanP'].max()
+    df_season_heatpump_prognosis['p_mw'] = df_season_heatpump_prognosis['meanP_NORM']
+
+
+    # Generate heatpump scaling factors DataFrame
+    heatpump_scaling_factors_df = pd.DataFrame({
+        'load_idx': heatpump_loads.index,
+        'p_mw': heatpump_loads['p_mw'].values,
+        'bus': heatpump_loads['bus'].values
+    }).set_index('load_idx')
+
+    # Create a scaled heatpump profile DataFrame
+    df_season_heatpump_prognosis_scaled = pd.DataFrame(
+        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
+        columns=heatpump_loads.index
+    )
+
+    # Convert to DFData for dynamic control
+    ds_scaled_heatpump_profiles = DFData(df_season_heatpump_prognosis_scaled)
+
+    # Add a single ConstControl to update p_mw
+    const_load_heatpump = ConstControl(
+        net,
+        element="load",
+        variable="p_mw",  # Update p_mw directly
+        element_index=heatpump_loads.index,  # Apply to all loads
+        profile_name=df_season_heatpump_prognosis_scaled.columns.tolist(),  # Profile for each load
+        data_source=ds_scaled_heatpump_profiles
+    )
+
+    return net, const_load_household, const_load_heatpump, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df
+
+###############################################################################
+def setup_grid_powertech25(season):
+    sb_code1 = "1-LV-semiurb4--0-no_sw"  # rural MV grid of scenario 0 with full switches
+    net = sb.get_simbench_net(sb_code1)
+    net = reorder_buses_and_update_references(net)
+    #net = reorder_lines(net)
+    line_indices = [24, 28, 23, 0, 4, 19, 11, 5, 22, 18, 6, 20, 31, 13, 17, 29, 7, 12, 16]  # List of line indices to reverse
+
+    for idx in line_indices:
+        net.line.loc[idx, ['from_bus', 'to_bus']] = net.line.loc[idx, ['to_bus', 'from_bus']].values
+
+    # Buses and lines to remove
+    buses_to_drop = [14, 34, 9, 19]
+
+    # Filter loads connected to the specified buses
+    loads_to_modify = net.load[net.load.bus.isin(buses_to_drop)].index
+
+    # Set the 'p_mw' and 'q_mvar' columns to zero
+    net.load.loc[loads_to_modify, ['p_mw', 'q_mvar']] = 0
+
+    # Rename the loads to "DEACTIVATE"
+    net.load.loc[loads_to_modify, 'name'] = "DEACTIVATE"
+
+    # Update line at index 9 to represent 2 parallel NAYY 4x300 cables
+    line_idx = 9
+    net.line.loc[line_idx, ['name', 'type', 'length_km', 'r_ohm_per_km', 'x_ohm_per_km', 'c_nf_per_km', 'max_i_ka']] = [
+        "LV4.101 Line 7 (Parallel 2x NAYY 4x300)",  # New name
+        "cs",  # Type remains the same
+        0.001552,  # Length (unchanged)
+        0.1 / 2,  # resistance for parallel cables
+        0.080425 / 2,  # Halve reactance for parallel cables
+        829.999394 * 2,  # Double capacitance for parallel cables
+        0.838  # Max current capacity in kA (2x NAYY 4x300 ~ 450 A per cable)
+    ]
+
+    # Set ext_grid vm_pu to 1.0
+    net.ext_grid['vm_pu'] = 1.0
+
+    # Remove Sgen
+    net.sgen.drop(net.sgen.index, inplace=True)
+
+    ############################################################################################################
+    # Add Household Loads
+    ############################################################################################################
+    # Load the normalized household profile
+    df_household_prognosis = pd.read_csv("householdPrognosis.csv", sep=';')
+    df_season_household_prognosis = df_household_prognosis[df_household_prognosis['season'] == season]
+    df_season_household_prognosis['meanP'] = df_season_household_prognosis['meanP'].str.replace(",", ".").astype(float)
+    df_season_household_prognosis['P_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanP'] / df_season_household_prognosis['meanP'].max()
+    time_steps = df_season_household_prognosis.index
+
+
+    # Exclude the heat pump load index from the household loads
+    household_loads = net.load[(net.load['name'].str.startswith("LV4.101")) & (net.load.index != 21)]
+    household_scaling_factors = household_loads['p_mw'].values
+    for load_idx in household_loads.index:
+        net.load.at[load_idx, 'controllable'] = False
+
+    # Create a scaled profile DataFrame
+    scaled_household_profiles = pd.DataFrame(
+        df_season_household_prognosis['P_HOUSEHOLD_NORM'].values[:, None] * household_scaling_factors / par.hh_scaling,
+        columns=household_loads.index
+    )
+
+    # Convert to DFData for dynamic control
+    ds_scaled_household_profiles = DFData(scaled_household_profiles)
+
+    # Add a single ConstControl to update p_mw
+    const_load_household = ConstControl(
+        net,
+        element="load",
+        variable="p_mw",  # Update p_mw directly
+        element_index=household_loads.index,  # Apply to all loads
+        profile_name=scaled_household_profiles.columns.tolist(),  # Profile for each load
+        data_source=ds_scaled_household_profiles
+    )
+
+    ############################################################################################################
+    # Add Heat Pump
+    ############################################################################################################
+    # Locate the load at bus 29
+    # Locate the specific household load at bus 29
+    hp_index = net.load[(net.load.bus == 29) & net.load['name'].str.startswith("LV4")].index
+
+    # Identify the loads at bus 29
+    loads_at_bus_29 = net.load[net.load.bus == 29]
+
+    # Select the load to modify (e.g., the one starting with "LV4")
+    target_load_index = loads_at_bus_29[loads_at_bus_29['name'].str.startswith("LV4")].index
+
+    if len(target_load_index) > 0:
+        # Modify only the first matched load (or modify logic as needed)
+        target_load_index = target_load_index[0]
+        
+        # Rename the load and make it controllable
+        net.load.at[target_load_index, 'name'] = net.load.at[target_load_index, 'name'].replace("LV4", "HP")
+        net.load.at[target_load_index, 'controllable'] = True
+    else:
+        print("No load at bus 29 matches the criteria to be renamed.")
 
     heatpump_loads = net.load[net.load['name'].str.startswith("HP.101")]
 

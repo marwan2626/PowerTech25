@@ -283,6 +283,7 @@ def plot_opf_results_plotly(results):
     theta = results['theta']
     line_results = results['line_results']
     thermal_storage = results['thermal_storage']
+    thermal_storage_capacity = results['thermal_storage_capacity']
     transformer_loading = results.get('transformer_loading', {})
     
     # Get the list of time steps
@@ -455,6 +456,16 @@ def plot_opf_results_plotly(results):
                     xaxis_title='Time Steps',
                     yaxis_title='Power (MW)',
                     hovermode="x unified")
+    fig.show()
+
+    fig = go.Figure()
+    for bus in thermal_storage_capacity['capacity'].keys():
+        capacity_values = [thermal_storage_capacity['capacity'][bus]]
+        fig.add_trace(go.Scatter(x=bus, y=capacity_values, name=f'Bus {bus}'))
+    fig.update_layout(title='Thermal Storage Capacity by Bus',
+            xaxis_title='Bus',
+            yaxis_title='Capacity (MWh)',
+            hovermode="x unified")
     fig.show()
 
 def plot_line_violation_boxplot(violations_df):

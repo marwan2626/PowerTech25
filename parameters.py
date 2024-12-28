@@ -26,22 +26,24 @@ import numpy as np
 ## GENERAL ## 
 ###############################################################################
 ### NETWORK ###
-hp_scaling = 0.01 # heat pump scaling factor
-hh_scaling = 100 # household scaling factor
+hp_scaling = 92 # heat pump scaling factor
+hh_scaling = 0.75 # household scaling factor
 
-hp_max_power = 1 # heat pump max power in MW
-ts_size_mwh = 48*4 # thermal storage size in MWh
+hp_max_power = 10 # heat pump max power in MW
+ts_size_mwh = 48 # thermal storage size in MWh
 ts_sof_init = 0.5 # initial state of fill of thermal storage
 ts_eff = 0.95 # thermal storage efficiency
-ts_out_max = 0.045 # thermal storage max output in MWth
-ts_in_max = 0.045 # thermal storage max input in MWth
+ts_out_max = 0.45 # thermal storage max output in MWth
+ts_in_max = 0.45 # thermal storage max input in MWth
+tsnet_eff = 0.90 # thermal network efficiency
 COP = 3 # heat pump COP
 
 ### Optimization Costs ###
 import_cost = 80  # €/MW for importing power from the external grid
 export_cost = 80  # €/MW for exporting power to the external grid
 curtailment_cost = 150  # €/MW for curtailing PV (set higher than import/export costs)
-flexibility_cost = 200  # €/MW for reducing load at bus 1
+flexibility_cost = 200  # €/MW for using flexibility 
+c_cost = 1 #€/MWh cost of ts energy storage in €/MWh
 
 ### TIME HORIZON ###
 
