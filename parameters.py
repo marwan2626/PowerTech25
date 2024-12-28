@@ -29,6 +29,7 @@ import numpy as np
 hp_scaling = 92 # heat pump scaling factor
 hh_scaling = 0.75 # household scaling factor
 
+### THERMAL SYSTEM ###
 hp_max_power = 10 # heat pump max power in MW
 ts_size_mwh = 48 # thermal storage size in MWh
 ts_sof_init = 0.5 # initial state of fill of thermal storage
@@ -36,7 +37,11 @@ ts_eff = 0.95 # thermal storage efficiency
 ts_out_max = 0.45 # thermal storage max output in MWth
 ts_in_max = 0.45 # thermal storage max input in MWth
 tsnet_eff = 0.90 # thermal network efficiency
-COP = 3 # heat pump COP
+#COP = 3 # heat pump COP
+eta_c0 = 0.6 # carnot efficiency
+
+DeltaT = 2.1966# temperature difference in K
+T_S = 75+273.15 # temperature of the heat source in K
 
 ### Optimization Costs ###
 import_cost = 80  # €/MW for importing power from the external grid
