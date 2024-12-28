@@ -343,9 +343,10 @@ def setup_grid_powertech25(season):
     # Add Household Loads
     ############################################################################################################
     # Load the normalized household profile
-    df_household_prognosis = pd.read_csv("householdPrognosis.csv", sep=';')
+    df_household_prognosis = pd.read_csv("householdPrognosis1h.csv", sep=';')
     df_season_household_prognosis = df_household_prognosis[df_household_prognosis['season'] == season]
-    df_season_household_prognosis['meanP'] = df_season_household_prognosis['meanP'].str.replace(",", ".").astype(float)
+    #df_season_household_prognosis['meanP'] = df_season_household_prognosis['meanP'].str.replace(",", ".").astype(float)
+    df_season_household_prognosis['meanP'] = df_season_household_prognosis['meanP'].astype(float)
     df_season_household_prognosis['P_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanP'] / df_season_household_prognosis['meanP'].max()
     time_steps = df_season_household_prognosis.index
 
@@ -401,14 +402,18 @@ def setup_grid_powertech25(season):
     heatpump_loads = net.load[net.load['name'].str.startswith("HP.101")]
 
     # Load the heatpump prognosis profile CSV and filter by season
-    df_heatpump_prognosis = pd.read_csv("heatpumpPrognosis.csv", sep=';')
+    df_heatpump_prognosis = pd.read_csv("heatpumpPrognosis1h.csv", sep=';')
     df_season_heatpump_prognosis = df_heatpump_prognosis[df_heatpump_prognosis['season'] == season]
         
     # Process load profile for bus 1
-    df_season_heatpump_prognosis['meanP'] = df_season_heatpump_prognosis['meanP'].str.replace(",", ".").astype(float)
-    df_season_heatpump_prognosis['stdP'] = df_season_heatpump_prognosis['stdP'].str.replace(",", ".").astype(float)
-    df_season_heatpump_prognosis['meanQ'] = df_season_heatpump_prognosis['meanQ'].str.replace(",", ".").astype(float)
-    df_season_heatpump_prognosis['stdQ'] = df_season_heatpump_prognosis['stdQ'].str.replace(",", ".").astype(float)
+    # df_season_heatpump_prognosis['meanP'] = df_season_heatpump_prognosis['meanP'].str.replace(",", ".").astype(float)
+    # df_season_heatpump_prognosis['stdP'] = df_season_heatpump_prognosis['stdP'].str.replace(",", ".").astype(float)
+    # df_season_heatpump_prognosis['meanQ'] = df_season_heatpump_prognosis['meanQ'].str.replace(",", ".").astype(float)
+    # df_season_heatpump_prognosis['stdQ'] = df_season_heatpump_prognosis['stdQ'].str.replace(",", ".").astype(float)
+    df_season_heatpump_prognosis['meanP'] = df_season_heatpump_prognosis['meanP'].astype(float)
+    df_season_heatpump_prognosis['stdP'] = df_season_heatpump_prognosis['stdP'].astype(float)
+    df_season_heatpump_prognosis['meanQ'] = df_season_heatpump_prognosis['meanQ'].astype(float)
+    df_season_heatpump_prognosis['stdQ'] = df_season_heatpump_prognosis['stdQ'].astype(float)
         
     df_season_heatpump_prognosis['meanP_NORM'] = df_season_heatpump_prognosis['meanP'] / df_season_heatpump_prognosis['meanP'].max()
     df_season_heatpump_prognosis['stdP_NORM'] = df_season_heatpump_prognosis['stdP'] / df_season_heatpump_prognosis['meanP'].max()
@@ -441,5 +446,11 @@ def setup_grid_powertech25(season):
         data_source=ds_scaled_heatpump_profiles
     )
 
-    return net, const_load_household, const_load_heatpump, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df
+    ############################################################################################################
+    # Ambient Temperature
+    ############################################################################################################
+    T_amb =  pd.read_csv("temperatureWinter1h.csv")
+    T_amb = T_amb['APPARENT_TEMPERATURE:TOTAL']+273.15
+
+    return net, const_load_household, const_load_heatpump, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb
 

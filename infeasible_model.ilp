@@ -1,16 +1,14 @@
-\ Model opf_with_dc_load_flow_copy_copy
+\ Model opf_with_dc_load_flow_copy
 \ LP format - for model browsing. Use MPS format to capture full model detail.
 Minimize
  
 Subject To
- limit_import_229: ext_grid_import_229 <= 0.4
- heat_demand_coverage_229_29: flexible_load_229[29]
-   - 0.3333333333333333 ts_in_229_29 + 0.3333333333333333 ts_out_229_29
-   >= 0.276
- power_balance_slack_229: ext_grid_import_229 - ext_grid_export_229
-   - flexible_load_229[29] = 0.1445912363274788
+ heat_demand_coverage_31_29: flexible_load_31[29]
+   + 38.71858087947059 ts_in_31_29 - 38.71858087947059 ts_out_31_29
+   = 0.2531343384774337
+ storage_charging_31_29: 0.0258273928766388 flexible_load_31[29]
+   + ts_in_31_29 <= 0
 Bounds
- ext_grid_import_229 free
- flexible_load_229[29] free
- -infinity <= ts_out_229_29 <= 0.045
+ flexible_load_31[29] free
+ ts_in_31_29 free
 End
