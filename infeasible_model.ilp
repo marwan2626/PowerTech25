@@ -3,12 +3,13 @@
 Minimize
  
 Subject To
- heat_demand_coverage_31_29: flexible_load_31[29]
-   + 38.71858087947059 ts_in_31_29 - 38.71858087947059 ts_out_31_29
-   = 0.2531343384774337
- storage_charging_31_29: 0.0258273928766388 flexible_load_31[29]
-   + ts_in_31_29 <= 0
+ storage_charging_58_29: - 2.161461507534005 flexible_load_58[29]
+   + ts_in_58_29 <= 0
+ power_balance_slack_58: ext_grid_import_58 - ext_grid_export_58
+   - flexible_load_58[29] = 0.0366647074221873
+ transformer_loading_58: 1.963605292912739 ext_grid_import_58
+   + 1.963605292912739 ext_grid_export_58 + transformer_loading_58 = 0
 Bounds
- flexible_load_31[29] free
- ts_in_31_29 free
+ ext_grid_import_58 free
+ flexible_load_58[29] free
 End
