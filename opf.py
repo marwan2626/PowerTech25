@@ -46,7 +46,8 @@ def solve_opf(net, time_steps, const_load_heatpump, const_load_household, heatpu
     theta_vars = {}  # Store voltage angle decision variables (radians)
     curtailment_vars = {} # Store decision variables for curtailment
     flexible_load_vars = {}  # New flexible load variables
-    transformer_loading_vars = {}  # Store transformer loading percentage decision variables   
+    transformer_loading_vars = {}  # Store transformer loading percentage decision variables
+    transformer_loading_perc_vars = {}  # Store transformer loading percentage decision variables     
     ts_capacity_vars = {}  # Store thermal storage capacity decision variables
 
     # Add thermal storage variables
@@ -331,10 +332,15 @@ def solve_opf(net, time_steps, const_load_heatpump, const_load_household, heatpu
             line_results[t]["line_loading_percent"][line.Index] = line_loading_percent            
             line_results[t]["line_current_mag"][line.Index] = current_mag_ka
 
-        transformer_loading_vars[t] = model.addVar(lb=0, ub=100, name=f'transformer_loading_{t}')
+        transformer_loading_vars[t] = model.addVar(lb=0, ub=transformer_capacity_mw, name=f'transformer_loading_{t}')
+        transformer_loading_perc_vars[t] = model.addVar(lb=0, ub=100, name=f'transformer_loading_percent_{t}')
         model.addConstr(
-            transformer_loading_vars[t] == ((ext_grid_import_vars[t] + ext_grid_export_vars[t]) / transformer_capacity_mw) * 100,
-            name=f'transformer_loading_percentage_{t}'
+            transformer_loading_vars[t] == (ext_grid_import_vars[t] + ext_grid_export_vars[t]),
+            name=f'transformer_loading_{t}'
+        )
+        model.addConstr(
+            transformer_loading_perc_vars[t] == (transformer_loading_vars[t] / transformer_capacity_mw) * 100,
+            name=f'transformer_loading_percent_constr_{t}'
         )
 
     # Objective: Minimize total cost (import, export, and curtailment costs)
@@ -366,7 +372,7 @@ def solve_opf(net, time_steps, const_load_heatpump, const_load_household, heatpu
             ext_grid_import_results[t] = ext_grid_import_vars[t].x
             ext_grid_export_results[t] = ext_grid_export_vars[t].x
             theta_results[t] = {bus: theta_vars[t][bus].x for bus in net.bus.index}
-            transformer_loading_results[t] = transformer_loading_vars[t].x
+            transformer_loading_results[t] = transformer_loading_perc_vars[t].x
             
             # Separate flexible and non-flexible load results
             load_results[t] = {

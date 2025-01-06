@@ -21,5 +21,5 @@ net, const_load_household, const_load_heatpump, time_steps, df_household, df_sea
 Bbus = dt.calculate_bbus_matrix(net)
 #results = opf.solve_opf(net, time_steps, const_load_heatpump, const_load_household, heatpump_scaling_factors_df, T_amb, Bbus)
 results_drcc= drcc.drcc_opf(net, time_steps, const_load_heatpump, const_load_household, Bbus, df_season_heatpump_prognosis, heatpump_scaling_factors_df,T_amb, max_iter_drcc=100, alpha=0.05, eta=5e-4)
-
+#pl.plot_opf_results_plotly(results)
 pl.plot_opf_results_plotly(results_drcc)
