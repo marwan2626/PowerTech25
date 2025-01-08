@@ -26,8 +26,8 @@ import numpy as np
 ## GENERAL ## 
 ###############################################################################
 ### NETWORK ###
-hp_scaling = 106 # heat pump scaling factor
-hh_scaling = 1 # household scaling factor
+hp_scaling = 20 # heat pump scaling factor
+hh_scaling = 0.99 # household scaling factor
 
 ### THERMAL SYSTEM ###
 hp_max_power = 10 # heat pump max power in MW
@@ -66,34 +66,10 @@ B_MAX = 5 # maximum iterations opf
 K_MAX = 5 # maximum inner lf iterations
 
 
+## DRCC ##
+DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
+epsilon = 0.05 # CC violation probability
 ### FORECAST ###
 N_MC = 10 # number of samples for monte-carlo simulation
-
-
-###############################################################################
-## FLAGS: DISABLE = 0 , ENABLE = 1 ## 
-###############################################################################
-### UNITS ###
-#FLGBAT = 1 # BESS
-#FLGSHED = 0 # load shedding
-#FLGSHIFT = 0 # load shifting
-#FLGCURT = 1 # active power curtailment
-#FLGOLTC = 0 # OLTC trafo
-#FLGLOAD = 1 # load profile: 0 = constant, 1 = time varying
-#FLGPF = 0 # power factor limit PV inverters
-#FLGPV = 0 # installed capacity PV from input file: 0 = input data, 1 = load dependent
-#FLGCC = 0 # chance constraints
-#FLGDRCC = 0 # distributionally robust or gaussian: 1 = DR, 0 = Gaussian
-
-
-
-###############################################################################
-## CHANCE-CONSTRAINTS ## 
-###############################################################################
-### UNCERTAINTY MARGIN ###
-# power ratio gamma
-#FLGCC_GMA = 0 # pre-defined gamma or from OPF: pre-defined = 0 - from OPF = 1
-#power_factor = 0.95 # pre-defined power factor
-#CC_GMA = np.sqrt((1-power_factor**2)/power_factor**2) # pre-defined power ratio
 
 

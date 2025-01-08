@@ -375,13 +375,14 @@ def setup_grid_powertech25(season):
         profile_name=scaled_household_profiles.columns.tolist(),  # Profile for each load
         data_source=ds_scaled_household_profiles
     )
-
+    # Set p_mw of load with index 21 to 0
+    net.load.loc[22, 'p_mw'] = 0
     ############################################################################################################
     # Add Heat Pump
     ############################################################################################################
     # Locate the load at bus 29
     # Locate the specific household load at bus 29
-    hp_index = net.load[(net.load.bus == 29) & net.load['name'].str.startswith("LV4")].index
+    #hp_index = net.load[(net.load.bus == 29) & net.load['name'].str.startswith("LV4")].index
 
     # Identify the loads at bus 29
     loads_at_bus_29 = net.load[net.load.bus == 29]
