@@ -59,7 +59,7 @@ def run_dc_load_flow(Bbus, net, P_mw):
 
     # Identify the slack bus (usually the bus connected to ext_grid)
     slack_bus_index = net.ext_grid.bus.iloc[0]
-    print(f"Slack Bus Index: {slack_bus_index}")
+    #print(f"Slack Bus Index: {slack_bus_index}")
     
     # Reduce P_pu by removing the slack bus power
     P_pu_reduced = np.delete(P_pu, slack_bus_index)
@@ -80,7 +80,7 @@ def run_dc_load_flow(Bbus, net, P_mw):
         if i != slack_bus_index:
             theta_full[i] = theta_reduced[idx]
             idx += 1
-    print(f"Theta Full: {theta_full}")
+    #print(f"Theta Full: {theta_full}")
     # theta_full_degrees = (theta_full*180)/np.pi
     # print(f"Theta Full (degrees): {theta_full_degrees}")
     
@@ -159,7 +159,8 @@ def calculate_variance_propagation(net, time_steps, const_load_heatpump, Bbus):
         "line_current_mag": [],
         "load_p_mw": [],
         "sgen_p_mw": [],
-        "line_pl_mw": []  # Ensure this key is included
+        "line_pl_mw": [],
+        'transformer_pl_mw': []  
     }
 
     line_indices = None
@@ -189,28 +190,31 @@ def calculate_variance_propagation(net, time_steps, const_load_heatpump, Bbus):
 
         # Run the DC load flow calculation
         flow_results = run_dc_load_flow(Bbus, net, P)
-        print(f"Time step {t}, Theta (flow_results): {flow_results['var_theta']}")
+        #print(f"Time step {t}, Theta (flow_results): {flow_results['var_theta']}")
 
         if line_indices is None:
             line_indices = flow_results['line_pl_mw'].index
 
         results["time_step"].append(t)
-        results["theta_degrees"].append(flow_results['theta_degrees'])
-        results["var_theta"].append(flow_results['var_theta'])
-        print(f"After appending: {results['var_theta'][-1]}")        
+        results["theta_degrees"].append(flow_results['theta_degrees'].to_numpy())
+        results["var_theta"].append(flow_results['var_theta'].to_numpy())
+        #print(f"After appending: {results['var_theta'][-1]}")        
         results["line_loading_percent"].append(flow_results['line_loading_percent'].tolist())
         results["line_current_mag"].append(flow_results['line_current_mag'].tolist())
         results["load_p_mw"].append(net.load.p_mw.values.tolist())
         results["sgen_p_mw"].append(net.sgen.p_mw.values.tolist())
         results["line_pl_mw"].append(flow_results['line_pl_mw'].tolist())
+        results['transformer_pl_mw'].append(flow_results['transformer_pl_mw'].tolist())
 
     theta_degrees_df = pd.DataFrame(results["theta_degrees"], index=results["time_step"], columns=net.bus.index)
     var_theta_df = pd.DataFrame(results["var_theta"], index=results["time_step"], columns=net.bus.index)
+    #print(f"Variance Propagation Results: {var_theta_df}")
     line_loading_percent_df = pd.DataFrame(results["line_loading_percent"], index=results["time_step"], columns=line_indices)
     line_current_mag_df = pd.DataFrame(results["line_current_mag"], index=results["time_step"], columns=line_indices)
     load_p_mw_df = pd.DataFrame(results["load_p_mw"], index=results["time_step"], columns=net.load.index)
     sgen_p_mw_df = pd.DataFrame(results["sgen_p_mw"], index=results["time_step"], columns=net.sgen.index)
     line_pl_mw_df = pd.DataFrame(results["line_pl_mw"], index=results["time_step"], columns=line_indices)
+    transformer_pl_mw_df = pd.DataFrame(results['transformer_pl_mw'], index=results["time_step"], columns=net.trafo.index)
 
     var_results_df = pd.concat({
         "theta_degrees": theta_degrees_df,
@@ -219,12 +223,18 @@ def calculate_variance_propagation(net, time_steps, const_load_heatpump, Bbus):
         "line_current_mag": line_current_mag_df,
         "load_p_mw": load_p_mw_df,
         "sgen_p_mw": sgen_p_mw_df,
-        "line_pl_mw": line_pl_mw_df
+        "line_pl_mw": line_pl_mw_df,
+        'transformer_pl_mw': transformer_pl_mw_df
     }, axis=1)
 
     #results_df.to_excel("output_results.xlsx")
 
-    return var_results_df
+    var_theta_df = pd.DataFrame({
+    "time_step": results["time_step"],
+    "var_theta": [dict(zip(net.bus.index, var_theta)) for var_theta in results["var_theta"]]
+    })
+
+    return var_results_df, var_theta_df
     
 
 
@@ -232,9 +242,30 @@ def calculate_variance_propagation(net, time_steps, const_load_heatpump, Bbus):
 
 def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, Bbus):
     variance_net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)
-    var_results = calculate_variance_propagation(variance_net, time_steps, const_variance, Bbus)
-    var_theta = var_results['var_theta']
-    #print(f"Variance Propagation Results: {var_theta}")
+    var_results, var_theta_df = calculate_variance_propagation(variance_net, time_steps, const_variance, Bbus)
+    #var_p_mw_t0 = var_results.loc[0, ("line_pl_mw")]
+    #print(f"Variance Propagation Results at time 0: {var_p_mw_t0}")
+    # Filter all line_pl_mw values across all time steps
+    var_P_line_dict = {}
+    var_P_trafo_dict = {}
+
+    for time_step in var_results.index:
+        # Access the line_pl_mw and transformer_pl_mw for the current time step
+        var_P_line = var_results.loc[time_step, ("line_pl_mw")]
+        var_P_trafo = var_results.loc[time_step, ("transformer_pl_mw")]
+
+        # Apply the filter: set values less than 1e-6 to 0
+        var_P_line = var_P_line.where(var_P_line.abs() >= 1e-6, 0)
+        #var_P_trafo = var_P_trafo.where(var_P_trafo.abs() >= 1e-6, 0)
+
+        # Save the filtered results in a nested dictionary
+        var_P_line_dict[time_step] = var_P_line.to_dict()
+        var_P_trafo_dict[time_step] = var_P_trafo.to_dict()
+        
+    # Access the results as var_P_line_dict[t][line]
+    #print(f"Var Line Value, {var_P_line_dict}")
+    #print(f"Var Trafo Value, {var_P_trafo_dict}")
+
     pd.set_option('display.precision', 10)
     model = gp.Model("opf_with_dc_load_flow")
 
@@ -395,6 +426,7 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
         for bus in flexible_load_buses
     }
        
+    k_epsilon = np.sqrt((1 - par.epsilon) / par.epsilon)
 
     # Update SOF constraints for each flexible load bus
     for t_idx, t in enumerate(time_steps):
@@ -639,16 +671,16 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
                 line_loading_percent = 100 * (abs_current_mag_ka / line.max_i_ka)
                 # model.addConstr(abs_current_mag_ka <= (line.max_i_ka), 
                 #             name=f'abs_current_mag_constraint_{t}_{line.Index}')
-                model.addConstr(abs_power_flow_mw <= (line.max_i_ka * (sqrt3 * (base_voltage / 1e3))), 
+
+                model.addConstr(abs_power_flow_mw - par.DRCC_FLG*(k_epsilon * np.sqrt(var_P_line_dict[t][line.Index])) <= (line.max_i_ka * (sqrt3 * (base_voltage / 1e3))), 
                             name=f'abs_power_flow_constraint_{t}_{line.Index}')
 
             # Store results for each line in the time step
             line_results[t]["line_pl_mw"][line.Index] = power_flow_mw
             line_results[t]["line_loading_percent"][line.Index] = line_loading_percent            
             line_results[t]["line_current_mag"][line.Index] = current_mag_ka
-
-        transformer_loading_vars[t] = model.addVar(lb=0, ub=transformer_capacity_mw, name=f'transformer_loading_{t}')
-        transformer_loading_perc_vars[t] = model.addVar(lb=0, ub=100, name=f'transformer_loading_percent_{t}')
+        transformer_loading_vars[t] = model.addVar(lb=0, ub=0.67*(transformer_capacity_mw - par.DRCC_FLG*(k_epsilon * np.sqrt(-var_P_trafo_dict[t][0]))), name=f'transformer_loading_{t}')
+        transformer_loading_perc_vars[t] = model.addVar(lb=0, name=f'transformer_loading_percent_{t}')
         model.addConstr(
             transformer_loading_vars[t] == (ext_grid_import_vars[t] + ext_grid_export_vars[t]),
             name=f'transformer_loading_{t}'
