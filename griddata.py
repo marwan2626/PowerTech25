@@ -454,3 +454,31 @@ def setup_grid_powertech25(season):
 
     return net, const_load_household, const_load_heatpump, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb
 
+def setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df):
+    heatpump_loads = net.load[net.load['name'].str.startswith("HP.101")]
+    #print("heatpump_loads",heatpump_loads)
+    df_season_heatpump_prognosis['p_mw'] = df_season_heatpump_prognosis['stdP_NORM']
+    household_loads = net.load[(net.load['name'].str.startswith("LV4.101"))]
+    for load_idx in household_loads.index:
+        net.load.at[load_idx, 'p_mw'] = 0
+    #print("grid loads",net.load)
+    #print("network loads",net.load)
+    # Create a scaled variance DataFrame
+    df_variance = pd.DataFrame(
+        (df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling)**2,
+        columns=heatpump_loads.index
+    )
+    #print("df_variance",df_variance.columns.tolist())
+    # Convert to DFData for dynamic control
+    ds_variance= DFData(df_variance)
+    #print("ds_variance",ds_variance)
+    const_variance = ConstControl(
+        net,
+        element="load",
+        variable="p_mw",  # Update p_mw directly
+        element_index=heatpump_loads.index,  # Apply to all loads
+        profile_name=df_variance.columns.tolist(),  # Profile for each load
+        data_source=ds_variance
+    )
+    variance_net = net
+    return variance_net, const_variance
