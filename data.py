@@ -285,3 +285,11 @@ def manual_dc_timeseries2(time_steps, net, const_pv, const_load, Ybus):
     results_df.to_excel("output_results.xlsx")
     
     return results_df
+
+
+def get_electricity_price(filepath):
+    # Read the electricity price data
+    electricity_price = pd.read_csv(filepath)
+    #print(f"Electricity Price Data: {electricity_price}")
+    return electricity_price
+    

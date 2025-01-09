@@ -315,6 +315,17 @@ def plot_opf_results_plotly(results):
                       hovermode="x unified")
     fig.show()
 
+    # Plot HNS
+    fig = go.Figure()
+    for bus in load[time_steps[0]]['HNS'].keys():
+        flexible_load_values = [load[t]['HNS'][bus] for t in time_steps]
+        fig.add_trace(go.Scatter(x=time_steps, y=flexible_load_values, mode='lines', name=f'Bus {bus}'))
+    fig.update_layout(title='Heat not supplied by Bus and Time Step',
+                      xaxis_title='Time Steps',
+                      yaxis_title='HNS (MW)',
+                      hovermode="x unified")
+    fig.show()
+
     # Plot External Grid Import/Export
     fig = go.Figure()
     ext_import_values = [ext_grid_import[t] for t in time_steps]
@@ -458,14 +469,26 @@ def plot_opf_results_plotly(results):
                     hovermode="x unified")
     fig.show()
 
+    # Plot Thermal Storage Capacity
     fig = go.Figure()
-    for bus in thermal_storage_capacity['capacity'].keys():
-        capacity_values = [thermal_storage_capacity['capacity'][bus]]
-        fig.add_trace(go.Scatter(x=bus, y=capacity_values, name=f'Bus {bus}'))
-    fig.update_layout(title='Thermal Storage Capacity by Bus',
-            xaxis_title='Bus',
-            yaxis_title='Capacity (MWh)',
-            hovermode="x unified")
+    # Convert the thermal storage capacity dictionary to lists of x and y values
+    buses = list(thermal_storage_capacity['capacity'].keys())
+    capacities = list(thermal_storage_capacity['capacity'].values())
+    # Add a bar trace
+    fig.add_trace(go.Bar(
+        x=buses,  # List of buses
+        y=capacities,  # Corresponding capacities
+        name='Thermal Storage Capacity'
+    ))
+
+    # Update layout for better visualization
+    fig.update_layout(
+        title='Thermal Storage Capacity by Bus',
+        xaxis_title='Bus',
+        yaxis_title='Capacity (MWh)',
+        hovermode="x unified",
+        barmode='group'
+    )
     fig.show()
 
 def plot_line_violation_boxplot(violations_df):

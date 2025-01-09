@@ -18,11 +18,25 @@ import os
 import pandapower as pp
 
 # Set up the grid and time series data
-net, const_load_household, const_load_heatpump, time_steps, df_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df = gd.setup_grid_powertech25(season='winter')
-
+net, const_load_household, const_load_heatpump, time_steps, df_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb = gd.setup_grid_powertech25(season='winter')
+net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)
+print(f"Type of net.controller: {type(net.controller)}")
+print("Contents of net.controller:")
+print(net.controller)
+# Print details of each ConstController
+if hasattr(net, 'controller') and not net.controller.empty:
+    print("Details of ConstControllers:")
+    for idx, controller in enumerate(net.controller['object'], start=1):
+        print(f"Controller {idx}:")
+        print(f"  Element: {controller.element}")
+        print(f"  Variable: {controller.variable}")
+        print(f"  Element Index: {controller.element_index}")
+        print(f"  Profile Name: {controller.profile_name}")
+else:
+    print("No controllers found in the net.")
 #net, df_pv, df, pv_generators, const_load, const_pv = gd.setup_grid()
 #time_steps = df_pv.index
-
+print(f"Time steps: {time_steps}")
 # Create the output writer
 def create_output_writer(net, time_steps, output_dir):
     ow = OutputWriter(net, time_steps, output_path=output_dir, output_file_type=".xlsx", log_variables=list())
@@ -33,14 +47,13 @@ def create_output_writer(net, time_steps, output_dir):
     ow.log_variable('res_bus', 'p_mw')  # Log bus active power
     ow.log_variable('res_line', 'loading_percent')
     ow.log_variable('res_line', 'i_ka')
+    ow.log_variable('res_trafo', 'loading_percent')  # Log transformer loading percent
     return ow
 
 output_dir = "output"
 
 # Define the function to run DC power flow
 def run_dc_power_flow(net, **kwargs):
-    # Print loads and generation for debugging
-    print(f"Time step {kwargs.get('time_step', 'unknown')}:")
     print(f"Loads at each bus: {net.load.p_mw.values.tolist()}")
     print(f"Generation at each bus: {net.sgen.p_mw.values.tolist()}")
     
@@ -83,7 +96,7 @@ plt.ylabel("voltage degree")
 plt.title("Voltage Angle")
 plt.grid()
 plt.show()
-print(va_degree)
+#print(va_degree)
 
 # Current results
 i_ka_file = os.path.join(output_dir, "res_line", "i_ka.xlsx")
@@ -104,7 +117,17 @@ plt.ylabel("p_mw")
 plt.title("load power")
 plt.grid()
 plt.show()
-print(load_p_mw)
+#print(load_p_mw)
 
 # Print Bbus matrix for debugging
 print(net._ppc['internal']['Bbus'].A)
+
+# Transformer loading results
+trafo_loading_file = os.path.join(output_dir, "res_trafo", "loading_percent.xlsx")
+trafo_loading = pd.read_excel(trafo_loading_file, index_col=0)
+trafo_loading.plot()
+plt.xlabel("time step")
+plt.ylabel("Transformer Loading [%]")
+plt.title("Transformer Loading")
+plt.grid()
+plt.show()
