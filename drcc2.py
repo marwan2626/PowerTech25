@@ -560,10 +560,10 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
 
         # Total power balance constraint at the slack bus
         # This enforces that the slack bus always balances generation and demand
-        total_generation = gp.quicksum(pv_gen_vars[t][bus] for bus in pv_buses) if pv_buses.size > 0 else 0
-        total_load = gp.quicksum(flexible_load_vars[t][bus] for bus in flexible_load_buses) + gp.quicksum(net.load.loc[net.load.bus == bus, 'p_mw'].values[0] 
-                                for bus in net.load.bus.values if bus not in flexible_load_buses)        
-        model.addConstr(ext_grid_import_vars[t] - ext_grid_export_vars[t] == total_load - total_generation, name=f'power_balance_slack_{t}')
+        # total_generation = gp.quicksum(pv_gen_vars[t][bus] for bus in pv_buses) if pv_buses.size > 0 else 0
+        # total_load = gp.quicksum(flexible_load_vars[t][bus] for bus in flexible_load_buses) + gp.quicksum(net.load.loc[net.load.bus == bus, 'p_mw'].values[0] 
+        #                         for bus in net.load.bus.values if bus not in flexible_load_buses)        
+        #model.addConstr(ext_grid_import_vars[t] - ext_grid_export_vars[t] == total_load - total_generation, name=f'power_balance_slack_{t}')
 
     # Enforce final state of fill to match initial state (0.5) for all flexible load buses
     for bus in flexible_load_buses:
@@ -614,6 +614,15 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
             line_results[t]["line_pl_mw"][line.Index] = power_flow_mw
             line_results[t]["line_loading_percent"][line.Index] = line_loading_percent            
             line_results[t]["line_current_mag"][line.Index] = current_mag_ka
+
+        # Transformer loading constraints
+        for trafo in net.trafo.itertuples():
+            x_pu = (trafo.vk_percent / 100) / trafo.sn_mva
+            power_flow_pu = (theta_vars[t][trafo.hv_bus] - theta_vars[t][trafo.lv_bus]) / x_pu
+            power_flow_mw = power_flow_pu * net.sn_mva
+
+        model.addConstr(ext_grid_import_vars[t] - ext_grid_export_vars[t] == power_flow_mw, name=f'power_balance_slack_{t}')
+
         transformer_loading_vars[t] = model.addVar(lb=0, ub=((par.max_trafo_loading*transformer_capacity_mw) - par.DRCC_FLG*(k_epsilon * np.sqrt(var_P_trafo_dict[t][0]))), name=f'transformer_loading_{t}')
         transformer_loading_perc_vars[t] = model.addVar(lb=0, name=f'transformer_loading_percent_{t}')
         model.addConstr(

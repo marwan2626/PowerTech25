@@ -271,25 +271,25 @@ def run_single_sample_with_violation(
                 # Ensure adjusted_load is non-negative
                 #adjusted_load = min(sampled_heat_demand,max(0.0, sampled_heat_demand - (nominal_heatpump - nominal_heat_demand)))
                 #adjusted_load = min(par.hp_max_power, max(0.0, sampled_heat_demand - (nominal_heatpump - nominal_heat_demand)))
-                # adjusted_load = max(
-                #     0.0,
-                #     nominal_heatpump + (sampled_heat_demand - nominal_heat_demand)
-                # )
-                adjusted_load = nominal_heatpump
+                adjusted_load = max(
+                    0.0,
+                    nominal_heatpump + (sampled_heat_demand - nominal_heat_demand)
+                )
+                #adjusted_load = nominal_heatpump #debug dispatch solution with pandapower
 
-                print(
-                    f"Time step {t}, Bus {bus}: "
-                    f"Nominal heatpump = {nominal_heatpump}, "
-                    f"Nominal heat demand = {nominal_heat_demand}, "
-                    f"Sampled heat demand = {sampled_heat_demand}, "
-                    f"Adjusted load = {adjusted_load}"
-                )  # Debug statement
+                # print(
+                #     f"Time step {t}, Bus {bus}: "
+                #     f"Nominal heatpump = {nominal_heatpump}, "
+                #     f"Nominal heat demand = {nominal_heat_demand}, "
+                #     f"Sampled heat demand = {sampled_heat_demand}, "
+                #     f"Adjusted load = {adjusted_load}"
+                # )  # Debug statement
 
                 # Update the load in the network
                 net.load.at[load_index, 'p_mw'] = float(adjusted_load)
-                if t == 166:
-                    print(f"Assigned adjusted load {adjusted_load} to load index {load_index}, bus {bus}")
-                    print(f"Load with index {load_index} is now {net.load.at[load_index, 'p_mw']}")
+                # if t == 166:
+                #     print(f"Assigned adjusted load {adjusted_load} to load index {load_index}, bus {bus}")
+                #     print(f"Load with index {load_index} is now {net.load.at[load_index, 'p_mw']}")
 
             except Exception as e:
                 print(f"Error updating load_index {load_index}, bus {bus} at time {t}: {e}")
@@ -298,8 +298,8 @@ def run_single_sample_with_violation(
         try:
             pp.rundcpp(net, check_connectivity=False, verbose=False)
             #print(f"[INFO] Pandapower run successful for time step {t}.")
-            if t == 166:
-                print(net.load)
+            # if t == 166:
+            #     print(net.load)
         except pp.optimality.PandapowerRunError:
             total_violations += 1
             print(f"[ERROR] Pandapower failed to converge for time step {t}.")
