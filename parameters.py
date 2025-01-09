@@ -26,7 +26,7 @@ import numpy as np
 ## GENERAL ## 
 ###############################################################################
 ### NETWORK ###
-hp_scaling = 36 # heat pump scaling factor
+hp_scaling = 30 # heat pump scaling factor
 hh_scaling = 1 # household scaling factor
 
 max_trafo_loading = 0.7 # max transformer loading
@@ -48,7 +48,7 @@ T_S = 75+273.15 # temperature of the heat source in K
 
 ### Optimization Costs ###
 curtailment_cost = 150  # €/MW for curtailing PV (set higher than import/export costs)
-HNS_cost = 2000  # €/MW for HNS
+HNS_cost = 5000  # €/MW for HNS
 c_cost = 5200 #€/MWh cost of ts energy storage in €/MWh
 
 ### TIME HORIZON ###
@@ -62,8 +62,8 @@ ETA_OPF = 5e-4 # bfs-opf voltage mismatch #ETA_BFSOPF RENAMED
 
 ## DRCC ##
 DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.05 # CC violation probability
+epsilon = 0.1 # CC violation probability
 ### FORECAST ###
-N_MC = 10 # number of samples for monte-carlo simulation
+N_MC = 100 # number of samples for monte-carlo simulation
 
 

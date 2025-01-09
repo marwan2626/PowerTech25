@@ -1,41 +1,6 @@
 Line Constraint Violations:
 
 Transformer Constraint Violations:
-Time Step 17, 10 violations
-Time Step 18, 10 violations
-Time Step 19, 10 violations
-Time Step 37, 10 violations
-Time Step 42, 10 violations
-Time Step 43, 10 violations
-Time Step 64, 10 violations
-Time Step 65, 10 violations
-Time Step 66, 10 violations
-Time Step 67, 10 violations
-Time Step 83, 10 violations
-Time Step 84, 10 violations
-Time Step 85, 10 violations
-Time Step 106, 10 violations
-Time Step 107, 10 violations
-Time Step 108, 10 violations
-Time Step 109, 10 violations
-Time Step 130, 10 violations
-Time Step 131, 10 violations
-Time Step 132, 10 violations
-Time Step 133, 10 violations
-Time Step 134, 10 violations
-Time Step 135, 10 violations
-Time Step 136, 10 violations
-Time Step 139, 10 violations
-Time Step 154, 10 violations
-Time Step 155, 10 violations
-Time Step 156, 10 violations
-Time Step 157, 10 violations
-Time Step 158, 10 violations
-Time Step 160, 10 violations
-Time Step 161, 10 violations
-Time Step 162, 10 violations
-Time Step 163, 10 violations
-Time Step 164, 10 violations
 
 Maximum Violations:
 Line None, Time Step None: 0 violations
