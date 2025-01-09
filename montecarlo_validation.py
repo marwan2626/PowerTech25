@@ -1,9 +1,9 @@
 """
-Code for the publication Exploiting Flexibility in Multi-Energy Systems
-through Distributionally Robust Chance-Constrained
+Code for the publication Reliability-Constrained Thermal Storage Sizing in
+Multi-Energy Systems under Uncertainty
 Optimization by Marwan Mostafa 
 
-Monecarlo Analysis File
+Monecarlo Validation File
 """
 
 ###############################################################################
@@ -71,86 +71,8 @@ def generate_samples(df_season_heatpump_prognosis):
 
 
 ###############################################################################
-## PANDAPOWER FUNCTIONS ##
+## AUXILLIARY FUNCTIONS ##
 ###############################################################################
-
-
-###############################################################################
-## MONTECARLO ANALYSIS ##
-###############################################################################
-
-def run_single_sample(net, time_steps, sample_profile, df_household):
-    # Deepcopy the network to ensure thread-safety
-    net = net.deepcopy()
-
-    # Select load buses
-    load_bus_1 = net.load.index.intersection([0])
-    load_buses_household = net.load.index.intersection([1, 2, 3, 4, 5])
-
-    # Precompute household scaling factor
-    household_profile = df_household['P_HOUSEHOLD'] / par.house_scaling
-
-    # Collect results for this sample
-    sample_results = {'loads': [], 'buses': [], 'lines': [], 'trafos': []}
-
-    for t in time_steps:
-        # Update load values directly
-        net.load.loc[load_bus_1, 'p_mw'] = sample_profile.loc[t, 'meanP']
-        net.load.loc[load_buses_household, 'p_mw'] = household_profile[t]
-
-        # Run DC power flow with reduced logging
-        pp.runpp(net, check_connectivity=False, verbose=False)
-
-        # Collect results at each time step
-        load_results = net.res_load[['p_mw']].copy()
-        load_results['time_step'] = t
-        
-        bus_results = net.res_bus[['vm_pu', 'va_degree']].copy()
-        bus_results['time_step'] = t
-        
-        line_results = net.res_line[['loading_percent', 'i_ka']].copy()
-        line_results['time_step'] = t
-        
-        trafo_results = net.res_trafo[['loading_percent']].copy()
-        trafo_results['time_step'] = t
-
-        # Append time-step results to sample's results
-        sample_results['loads'].append(load_results)
-        sample_results['buses'].append(bus_results)
-        sample_results['lines'].append(line_results)
-        sample_results['trafos'].append(trafo_results)
-
-    # Concatenate results from all time steps for this sample
-    return (
-        pd.concat(sample_results['loads'], ignore_index=True),
-        pd.concat(sample_results['buses'], ignore_index=True),
-        pd.concat(sample_results['lines'], ignore_index=True),
-        pd.concat(sample_results['trafos'], ignore_index=True)
-    )
-
-def montecarlo_analysis_parallel(net, time_steps, df_season_heatpump_prognosis, df_household, n_jobs=4):
-    mc_samples = generate_samples(df_season_heatpump_prognosis)  # Generate MC samples
-
-    # Start timing
-    start_time = time.time()
-
-    # Use joblib with tqdm for parallel processing with progress reporting
-    all_results = Parallel(n_jobs=n_jobs)(
-        delayed(run_single_sample)(net, time_steps, sample_profile, df_household) 
-        for sample_profile in tqdm(mc_samples, desc="Processing samples")
-    )
-
-    # Calculate total elapsed time
-    total_time = time.time() - start_time
-    print(f"Monte Carlo analysis completed for {len(mc_samples)} samples in parallel.")
-    print(f"Total time taken: {total_time:.2f} seconds.")
-    
-    return all_results
-
-
-###############################################################################
-
-
 
 def aggregate_line_violations(overall_line_violations, total_mc_samples, time_steps, line_indices):
     records = []
@@ -193,17 +115,35 @@ def aggregate_line_violations(overall_line_violations, total_mc_samples, time_st
 
     return pd.DataFrame(records)
 
-def aggregate_trafo_violations(trafo_violations, num_samples):
-    data = []
-    for time_step, count in trafo_violations.items():
-        data.append({
-            'time_step': time_step,
-            'violation_count': count,
-            'violation_probability': count / num_samples if num_samples > 0 else 0,
-        })
-    return pd.DataFrame(data)
+def aggregate_trafo_violations(trafo_violations, num_samples, time_steps):
+    records = []
 
+    # Process existing violations
+    if trafo_violations:
+        for time_step, count in trafo_violations.items():
+            violation_probability = count / num_samples if num_samples > 0 else 0
+            records.append({
+                'time_step': time_step,
+                'violation_count': count,
+                'violation_probability': violation_probability,
+                'violation_probability_percent': violation_probability * 100,
+            })
 
+    # Populate with 0 for missing time steps and transformers
+    for t in time_steps:
+        if t not in trafo_violations.keys():
+            records.append({
+                'time_step': t,
+                'violation_count': 0,
+                'violation_probability': 0.0,
+                'violation_probability_percent': 0.0,
+            })
+
+    return pd.DataFrame(records)
+
+###############################################################################
+## MONTECARLO ANALYSIS ##
+###############################################################################
 
 def run_single_sample_with_violation(
     net, time_steps, sample_profile, opf_results, const_load_household, const_load_heatpump, heatpump_scaling_factors_df
@@ -251,9 +191,9 @@ def run_single_sample_with_violation(
 
         for load_index, scaling_data in heatpump_scaling_factors_df.iterrows():
             scaling_factor = scaling_data['p_mw']
-            print(f"scaling_factor: {scaling_factor}")
+            #print(f"scaling_factor: {scaling_factor}")
             bus = scaling_data['bus']
-            print(f"bus: {bus}")
+            #print(f"bus: {bus}")
 
             try:
                 # Map Monte Carlo sample to heat pump load
@@ -335,7 +275,7 @@ def run_single_sample_with_violation(
 
         trafo_results = net.res_trafo[['loading_percent']].copy()
         trafo_results['time_step'] = t
-        print(f"trafo_results: {trafo_results}")
+        #print(f"trafo_results: {trafo_results}")
 
         sample_results['loads'].append(load_results)
         sample_results['buses'].append(bus_results)
@@ -430,7 +370,7 @@ def montecarlo_analysis_with_violations(
         for t, count in trafo_violations.items():
             overall_trafo_violations[t] = overall_trafo_violations.get(t, 0) + count
 
-    print(f"overall_trafo_violations: {overall_trafo_violations}")
+    #print(f"overall_trafo_violations: {overall_trafo_violations}")
 
     # Find maximum violations
     max_violations_line = max(
@@ -486,12 +426,12 @@ def montecarlo_analysis_with_violations(
     violations_df['violation_probability_percent'] = violations_df['violation_probability'] * 100
 
     # Aggregate transformer violations into a DataFrame
-    trafo_violations_df = aggregate_trafo_violations(overall_trafo_violations, len(mc_samples))
+    trafo_violations_df = aggregate_trafo_violations(overall_trafo_violations, len(mc_samples), time_steps)
     # Add a probability column to the transformer violations DataFrame
     trafo_violations_df['violation_probability_percent'] = trafo_violations_df['violation_probability'] * 100
     # Print or log transformer violations
     print("Transformer Violations DataFrame:")
-    print(trafo_violations_df.head(200))
+    print(trafo_violations_df.head(20))
                                                      
 
     print(f"Monte Carlo analysis completed for {len(mc_samples)} samples in parallel.")

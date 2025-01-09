@@ -1,4 +1,9 @@
-"""Data File
+"""
+Code for the publication Reliability-Constrained Thermal Storage Sizing in
+Multi-Energy Systems under Uncertainty
+Optimization by Marwan Mostafa 
+
+Data File
 """
 ###############################################################################
 ## IMPORT PACKAGES & SCRIPTS ## 
