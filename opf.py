@@ -1,7 +1,7 @@
 # Function to solve OPF problem over a time series
 """
-Code for the publication Exploiting Flexibility in Multi-Energy Systems
-through Distributionally Robust Chance-Constrained
+Code for the publication Reliability-Constrained Thermal Storage Sizing in
+Multi-Energy Systems under Uncertainty
 Optimization by Marwan Mostafa 
 
 OPF File
