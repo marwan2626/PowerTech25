@@ -594,8 +594,7 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
             x_pu = (trafo.vk_percent / 100) / trafo.sn_mva
             power_flow_pu = (theta_vars[t][trafo.hv_bus] - theta_vars[t][trafo.lv_bus]) / x_pu
             power_flow_mw = power_flow_pu * net.sn_mva
-
-        model.addConstr(ext_grid_import_vars[t] - ext_grid_export_vars[t] == power_flow_mw, name=f'power_balance_slack_{t}')
+            model.addConstr(ext_grid_import_vars[t] - ext_grid_export_vars[t] == power_flow_mw, name=f'power_balance_slack_{t}')
 
         transformer_loading_vars[t] = model.addVar(lb=0, ub=((par.max_trafo_loading*transformer_capacity_mw) - par.DRCC_FLG*(k_epsilon * np.sqrt(var_P_trafo_dict[t][0]))), name=f'transformer_loading_{t}')
         transformer_loading_perc_vars[t] = model.addVar(lb=0, name=f'transformer_loading_percent_{t}')

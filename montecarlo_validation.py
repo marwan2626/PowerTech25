@@ -26,8 +26,11 @@ import results as rs
 ###############################################################################
 
 
-def generate_samples(df_season_heatpump_prognosis):
+import numpy as np
+import pandas as pd
 
+def generate_samples(df_season_heatpump_prognosis):
+    # Normalize the input data for ease of use
     max_mean = df_season_heatpump_prognosis['meanP'].max()
     df_season_heatpump_prognosis['meanP_norm'] = df_season_heatpump_prognosis['meanP'] / max_mean
     df_season_heatpump_prognosis['stdP_norm'] = df_season_heatpump_prognosis['stdP'] / max_mean
@@ -38,35 +41,67 @@ def generate_samples(df_season_heatpump_prognosis):
     timesteps = df_season_heatpump_prognosis.index
 
     n_samples = par.N_MC
-    
-    # Calculate bounds for the uniform distribution
-    # lower_bounds = meanP - stdP
-    # upper_bounds = meanP + stdP
 
-    # Generate samples uniformly within the bounds
-
-    # samples = np.random.uniform(
-    #     low=lower_bounds,  # Lower bounds for each timestep
-    #     high=upper_bounds, # Upper bounds for each timestep
-    #     size=(n_samples, len(meanP))  # Shape: (n_samples, n_timesteps)
-    # )
-
-    samples = np.random.normal(
-        loc=meanP,                     # Mean for each timestep
-        scale=stdP,                    # Std deviation for each timestep
-        size=(n_samples, len(meanP))   # Shape: (n_samples, n_timesteps)
-    )
-
-
-    # Convert each sample to a DataFrame to mimic the old format
+    # Initialize the list to store sample profiles
     sample_profiles = []
+
+    # Randomly choose a distribution for each sample and generate data
     for i in range(n_samples):
+        # Randomly choose the distribution for the current sample
+        distribution_choice = np.random.choice(['normal', 'uniform', 'exponential', 'poisson', 'beta', 'gamma', 'lognormal', 'weibull'])
+
+        if distribution_choice == 'normal':
+            samples = np.random.normal(loc=meanP, scale=stdP, size=len(meanP))
+
+        elif distribution_choice == 'uniform':
+            # Define range for uniform distribution
+            lowerP = meanP - stdP  # Lower bound based on the mean and std deviation
+            upperP = meanP + stdP  # Upper bound based on the mean and std deviation
+            samples = np.random.uniform(low=lowerP, high=upperP, size=len(meanP))
+
+        elif distribution_choice == 'exponential':
+            # Scale exponential distribution to match the mean and approximate variability
+            samples = np.random.exponential(scale=stdP, size=len(meanP))
+
+        elif distribution_choice == 'poisson':
+            # Poisson's standard deviation is sqrt(lambda), so adjust lambda accordingly
+            lambdaP = np.maximum(meanP, stdP)  # Ensure lambda is positive and reasonable
+            samples = np.random.poisson(lam=lambdaP, size=len(meanP))
+
+        elif distribution_choice == 'beta':
+            a = (meanP * (1 - meanP) / stdP**2 - 1) * meanP
+            b = a * (1 / meanP - 1)
+            a = np.maximum(a, 1e-3)
+            b = np.maximum(b, 1e-3)
+            samples = np.random.beta(a=a, b=b, size=len(meanP))
+
+        elif distribution_choice == 'gamma':
+            shape = (meanP / stdP)**2
+            scale = stdP**2 / meanP
+            shape = np.maximum(shape, 1e-3)
+            scale = np.maximum(scale, 1e-3)
+            samples = np.random.gamma(shape=shape, scale=scale, size=len(meanP))
+
+        elif distribution_choice == 'lognormal':
+            sigma = np.sqrt(np.log(1 + (stdP / meanP)**2))
+            mu = np.log(meanP) - 0.5 * sigma**2
+            samples = np.random.lognormal(mean=mu, sigma=sigma, size=len(meanP))
+
+        elif distribution_choice == 'weibull':
+            shape = 1.5
+            scale = meanP / np.exp(np.log(2) / shape)
+            samples = np.random.weibull(a=shape, size=len(meanP)) * scale
+
+        # Convert the sample to a DataFrame
         df_sample = pd.DataFrame({
-            'P_HEATPUMP_NORM': samples[i]
+            'P_HEATPUMP_NORM': samples
         }, index=timesteps)  # Use the same index as the input DataFrame
+        
+        # Append the generated sample profile to the list
         sample_profiles.append(df_sample)
 
     return sample_profiles
+
 
 
 
@@ -197,7 +232,7 @@ def run_single_sample_with_violation(
 
             try:
                 # Map Monte Carlo sample to heat pump load
-                sampled_heat_demand = sample_profile.loc[t].at['P_HEATPUMP_NORM'] * scaling_factor * par.hp_scaling
+                sampled_heat_demand = sample_profile.loc[t].at['P_HEATPUMP_NORM'] * scaling_factor * par.hp_scaling 
 
                 #print(f"Time step {t}, Bus {bus}: Sampled heat demand = {sampled_heat_demand}")  # Debug statement
 
@@ -209,8 +244,6 @@ def run_single_sample_with_violation(
                 nominal_heat_demand = flexible_time_synchronized_loads[t][bus] * (1 / par.tsnet_eff) 
 
                 # Ensure adjusted_load is non-negative
-                #adjusted_load = min(sampled_heat_demand,max(0.0, sampled_heat_demand - (nominal_heatpump - nominal_heat_demand)))
-                #adjusted_load = min(par.hp_max_power, max(0.0, sampled_heat_demand - (nominal_heatpump - nominal_heat_demand)))
                 adjusted_load = max(
                     0.0,
                     nominal_heatpump + (sampled_heat_demand - nominal_heat_demand)

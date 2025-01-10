@@ -62,8 +62,8 @@ ETA_OPF = 5e-4 # bfs-opf voltage mismatch #ETA_BFSOPF RENAMED
 
 ## DRCC ##
 DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.1 # CC violation probability
+epsilon = 0.05 # CC violation probability
 ### FORECAST ###
-N_MC = 10 # number of samples for monte-carlo simulation
+N_MC = 1000 # number of samples for monte-carlo simulation
 
 
