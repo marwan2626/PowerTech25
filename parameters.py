@@ -47,32 +47,22 @@ T_S = 75+273.15 # temperature of the heat source in K
 
 ### Optimization Costs ###
 curtailment_cost = 150  # €/MW for curtailing PV (set higher than import/export costs)
-HNS_cost = 5000  # €/MW for HNS
+HNS_cost = 5000  # €/MWh for HNS
 c_cost = 5200 #€/MWh cost of ts energy storage in €/MWh
-
-### TIME HORIZON ###
-
-    
-### CONVERGENCE CRITERIA ###
-ETA_LF = 1e-4 # bfs standalone #ETA_BFS RENAMED
-ETA_OPF = 5e-4 # bfs-opf voltage mismatch #ETA_BFSOPF RENAMED
-#ETA_MARG_V = 1e-1 # bus voltage uncertainty margin
-
 
 ## DRCC ##
 DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.05 # CC violation probability
+epsilon = 0.1 # CC violation probability
 ### FORECAST ###
 N_MC = 1000 # number of samples for monte-carlo simulation
 
 
-
 # Define reliability parameters
-failure_rate_trafo = 0.0054  # failures per hour for transformer
+failure_rate_trafo = 0.0054/8760  # failures per hour for transformer
 repair_time_trafo = 10      # hours to repair transformer
-failure_rate_hp = 0.005      # failures per hour for heat pump
+failure_rate_hp = 0.05/8760      # failures per hour for heat pump
 repair_time_hp = 24         # hours to repair heat pump
 
-N_scenarios = 1000  # Number of Monte Carlo scenarios
+N_scenarios = 10000  # Number of Monte Carlo scenarios
 horizon = 24
 TS_capacity = 2.0363383769324406

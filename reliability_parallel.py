@@ -29,17 +29,33 @@ import results as rs
 ###############################################################################
 # Generate failure scenarios
 def generate_failure_schedule(failure_rate, repair_time, time_steps):
-    n_steps = len(time_steps)  # Total number of timesteps
+    n_steps = len(time_steps)
     failure_schedule = np.ones(n_steps)  # Initialize as all operational
+    
     t = 0
     while t < n_steps:
-        time_to_failure = max(0, np.random.exponential(1 / failure_rate))  # Avoid negative times
-        repair_duration = max(0, np.random.normal(repair_time))  # Avoid negative times
-        t_fail = int(t + time_to_failure)
-        t_repair = int(t_fail + repair_duration)
-        if t_fail < n_steps:
-            failure_schedule[t_fail:min(t_repair, n_steps)] = 0  # Mark failure period
-        t = t_repair
+        # If the system is operational, determine the next failure
+        if failure_schedule[t] == 1:
+            # Time to next failure (exponentially distributed)
+            time_to_failure = np.random.exponential(1 / failure_rate)
+            t_fail = int(t + time_to_failure)
+            
+            # If failure happens within the simulation time
+            if t_fail < n_steps:
+                # Duration of failure (normally distributed)
+                repair_duration = max(0, np.random.normal(repair_time))
+                t_repair = int(t_fail + repair_duration)
+                
+                # Set failure period in the schedule
+                failure_schedule[t_fail:min(t_repair, n_steps)] = 0
+                
+                # Move time pointer to the end of the repair period
+                t = t_repair
+            else:
+                break  # No more failures within the time horizon
+        else:
+            t += 1  # If already in failure, move to the next step
+
     return failure_schedule
 
 def generate_all_failure_schedules(failure_rate_trafo, repair_time_trafo, 
@@ -55,7 +71,6 @@ def generate_all_failure_schedules(failure_rate_trafo, repair_time_trafo,
         for _ in range(n_scenarios)
     ]
     return trafo_failures, hp_failures
-
 
 ###############################################################################
 ## OPF ##
@@ -486,119 +501,136 @@ def solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_hou
 ## Reliability ANALYSIS ##
 ###############################################################################
 
-def reliability_analysis(net, time_steps, const_load_heatpump, const_load_household, heatpump_scaling_factors_df, T_amb, Bbus):
-    # Define thermal storage capacity
+def run_single_scenario(
+    scenario,
+    net,
+    time_steps,
+    const_load_heatpump,
+    const_load_household,
+    heatpump_scaling_factors_df,
+    T_amb,
+    Bbus,
+    TS_capacity,
+    trafo_failure,
+    hp_failure,
+    original_results,
+):
+    # Convert failure schedules to flags
+    TRAFO_FAIL = {t: int(trafo_failure[i] == 0) for i, t in enumerate(time_steps)}
+    HP_FAIL = {t: int(hp_failure[i] == 0) for i, t in enumerate(time_steps)}
+
+    # Initialize results dataframe with original results
+    results_df = {
+        "pv_gen": original_results["pv_gen"].copy(),
+        "load": original_results["load"].copy(),
+        "ext_grid_import": original_results["ext_grid_import"].copy(),
+        "ext_grid_export": original_results["ext_grid_export"].copy(),
+        "theta": original_results["theta"].copy(),
+        "line_results": original_results["line_results"].copy(),
+        "transformer_loading": original_results["transformer_loading"].copy(),
+        "thermal_storage": original_results["thermal_storage"].copy(),
+        "thermal_storage_capacity": original_results["thermal_storage_capacity"].copy(),
+    }
+
+    failure_triggered = False
+
+    for t in time_steps:
+        # Skip until a failure occurs
+        if not failure_triggered and TRAFO_FAIL[t] == 0 and HP_FAIL[t] == 0:
+            continue
+
+        failure_triggered = True
+        rolling_horizon_steps = [s for s in time_steps if t <= s < t + par.horizon]
+
+        initial_storage_state = {
+            bus: results_df["thermal_storage"]["ts_sof"][t][bus] * TS_capacity
+            for bus in results_df["thermal_storage"]["ts_sof"][t]
+        }
+
+        # Solve OPF with failures
+        results_opf = solve_opf_with_failures(
+            net, rolling_horizon_steps, const_load_heatpump, const_load_household, 
+            heatpump_scaling_factors_df, T_amb, Bbus, TS_capacity, 
+            TRAFO_FAIL, HP_FAIL, initial_storage_state
+        )
+
+        for t_rolling in rolling_horizon_steps:
+            if t_rolling >= len(time_steps):
+                break
+            results_df["pv_gen"][t_rolling] = results_opf["pv_gen"][t_rolling]
+            results_df["load"][t_rolling]["flexible_load"] = results_opf["load"][t_rolling]["flexible_loads"]
+            results_df["load"][t_rolling]["non_flexible_load"] = results_opf["load"][t_rolling]["non_flexible_loads"]
+            results_df["load"][t_rolling]["HNS"] = results_opf["load"][t_rolling]["HNS"]
+            results_df["ext_grid_import"][t_rolling] = results_opf["ext_grid_import"][t_rolling]
+            results_df["ext_grid_export"][t_rolling] = results_opf["ext_grid_export"][t_rolling]
+            results_df["theta"][t_rolling] = results_opf["theta"][t_rolling]
+            results_df["line_results"][t_rolling]["line_pl_mw"] = results_opf["line_results"][t_rolling]["line_pl_mw"]
+            results_df["line_results"][t_rolling]["line_loading_percent"] = results_opf["line_results"][t_rolling]["line_loading_percent"]
+            results_df["line_results"][t_rolling]["line_current_mag"] = results_opf["line_results"][t_rolling]["line_current_mag"]
+            results_df["transformer_loading"][t_rolling] = results_opf["transformer_loading"][t_rolling]
+            results_df["thermal_storage"]["ts_in"][t_rolling] = results_opf["thermal_storage"]["ts_in"][t_rolling]
+            results_df["thermal_storage"]["ts_out"][t_rolling] = results_opf["thermal_storage"]["ts_out"][t_rolling]
+            results_df["thermal_storage"]["ts_sof"][t_rolling] = results_opf["thermal_storage"]["ts_sof"][t_rolling]
+
+    HNS_total = sum(sum(results_df["load"][t]["HNS"].values()) for t in time_steps)
+    final_storage = results_df["thermal_storage"]["ts_sof"][time_steps[-1]]
+
+    return {
+        "scenario": scenario,
+        "HNS": HNS_total,
+        "final_storage": final_storage
+    }
+
+###############################################################################
+
+def reliability_analysis(
+    net, time_steps, const_load_heatpump, const_load_household, 
+    heatpump_scaling_factors_df, T_amb, Bbus, n_jobs=-1
+):
     TS_capacity = par.TS_capacity
-    # Define the number of scenarios
     N_scenarios = par.N_scenarios
 
-    # Generate failure schedules for all scenarios
+    # Generate all failure schedules
     trafo_failures, hp_failures = generate_all_failure_schedules(
         par.failure_rate_trafo, par.repair_time_trafo,
         par.failure_rate_hp, par.repair_time_hp,
         time_steps, N_scenarios
     )
-    print("generated failure schedules")
+    print("Generated failure schedules.")
 
-    # Run Sequential Monte Carlo Simulation
-    results_rel = []
+    # Load original OPF results
+    original_results = rs.load_optim_results("drcc_results.pkl")
 
-    for scenario in range(N_scenarios):
-        print(f"Running scenario {scenario + 1}/{N_scenarios}...")
+    # Use joblib for parallel processing
+    scenarios = range(N_scenarios)
+    results_rel = Parallel(n_jobs=n_jobs)(
+        delayed(run_single_scenario)(
+            scenario,
+            net.deepcopy(),
+            time_steps,
+            const_load_heatpump,
+            const_load_household,
+            heatpump_scaling_factors_df,
+            T_amb,
+            Bbus,
+            TS_capacity,
+            trafo_failures[scenario],
+            hp_failures[scenario],
+            original_results,
+        )
+        for scenario in tqdm(scenarios, desc="Processing scenarios")
+    )
 
-        # Use pre-generated failure schedules
-        trafo_failure = trafo_failures[scenario]
-        hp_failure = hp_failures[scenario]
+    # Aggregate results
+    total_HNS = sum(res["HNS"] for res in results_rel)
+    EHNS = total_HNS / N_scenarios
 
-        # Convert failure schedules to flags
-        TRAFO_FAIL = {t: int(trafo_failure[i] == 0) for i, t in enumerate(time_steps)}  # 1 if failed
-        HP_FAIL = {t: int(hp_failure[i] == 0) for i, t in enumerate(time_steps)}        # 1 if failed
-
-        # Solve original OPF without failures
-        original_results = rs.load_optim_results("drcc_results.pkl")
-
-        # Initialize results dataframe with original results
-        results_df = {
-            "pv_gen": original_results["pv_gen"].copy(),
-            "load": original_results["load"].copy(),
-            "ext_grid_import": original_results["ext_grid_import"].copy(),
-            "ext_grid_export": original_results["ext_grid_export"].copy(),
-            "theta": original_results["theta"].copy(),
-            "line_results": original_results["line_results"].copy(),
-            "transformer_loading": original_results["transformer_loading"].copy(),
-            "thermal_storage": original_results["thermal_storage"].copy(),
-            "thermal_storage_capacity": original_results["thermal_storage_capacity"].copy(),
-        }
-
-        # Initialize state variables
-        failure_triggered = False
-
-
-        for t in time_steps:
-            # Check if a failure has occurred
-            if not failure_triggered and TRAFO_FAIL[t] == 0 and HP_FAIL[t] == 0:
-                # No failure yet: Use original results
-                continue
-
-            # A failure has occurred or failure mode is active
-            failure_triggered = True
-
-            # Define rolling horizon
-            rolling_horizon_steps = [s for s in time_steps if t <= s < t + par.horizon]
-
-            # Extract initial storage state directly from results_df
-            initial_storage_state = {
-                bus: results_df["thermal_storage"]["ts_sof"][t][bus] * TS_capacity
-                for bus in results_df["thermal_storage"]["ts_sof"][t]
-            }
-
-            # Solve OPF for the rolling horizon
-            results_opf = solve_opf_with_failures(
-                net, rolling_horizon_steps, const_load_heatpump, const_load_household, 
-                heatpump_scaling_factors_df, T_amb, Bbus, TS_capacity, 
-                TRAFO_FAIL, HP_FAIL, initial_storage_state
-            )
-            # Update results for the rolling horizon steps
-            for t_rolling in rolling_horizon_steps:
-                if t_rolling >= len(time_steps):
-                    break
-                results_df["pv_gen"][t_rolling] = results_opf["pv_gen"][t_rolling]
-                results_df["load"][t_rolling]["flexible_load"] = results_opf["load"][t_rolling]["flexible_loads"]
-                results_df["load"][t_rolling]["non_flexible_load"] = results_opf["load"][t_rolling]["non_flexible_loads"]
-                results_df["load"][t_rolling]["HNS"] = results_opf["load"][t_rolling]["HNS"]
-                results_df["ext_grid_import"][t_rolling] = results_opf["ext_grid_import"][t_rolling]
-                results_df["ext_grid_export"][t_rolling] = results_opf["ext_grid_export"][t_rolling]
-                results_df["theta"][t_rolling] = results_opf["theta"][t_rolling]
-                results_df["line_results"][t_rolling]["line_pl_mw"] = results_opf["line_results"][t_rolling]["line_pl_mw"]
-                results_df["line_results"][t_rolling]["line_loading_percent"] = results_opf["line_results"][t_rolling]["line_loading_percent"]
-                results_df["line_results"][t_rolling]["line_current_mag"] = results_opf["line_results"][t_rolling]["line_current_mag"]
-                results_df["transformer_loading"][t_rolling] = results_opf["transformer_loading"][t_rolling]
-                results_df["thermal_storage"]["ts_in"][t_rolling] = results_opf["thermal_storage"]["ts_in"][t_rolling]
-                results_df["thermal_storage"]["ts_out"][t_rolling] = results_opf["thermal_storage"]["ts_out"][t_rolling]
-                results_df["thermal_storage"]["ts_sof"][t_rolling] = results_opf["thermal_storage"]["ts_sof"][t_rolling]
-
-        # Collect scenario results
-        HNS_total = sum(
-            sum(results_df["load"][t]["HNS"].values()) for t in time_steps
-        )        
-        final_storage = results_df["thermal_storage"]["ts_sof"][time_steps[-1]]
-
-        results_rel.append({
-            "scenario": scenario,
-            "HNS": HNS_total,
-            "final_storage": final_storage
-        })
-
-    # After the for loop over scenarios, aggregate results
-    total_HNS = sum([res["HNS"] for res in results_rel])  # Total HNS across all scenarios
-    EHNS = total_HNS / N_scenarios  # Expected HNS
-
-    # Print reliability study summary
     print(f"Reliability study for TS_capacity = {TS_capacity} MWh")
-    print(f"  Total HNS = {total_HNS:.2f} MWh (Total Heat Not Supplied)")
-    print(f"  EHNS = {EHNS:.2f} MWh (Expected Heat Not Supplied)")
+    print(f"  Total HNS = {total_HNS:.2f} MWh")
+    print(f"  EHNS = {EHNS:.8f} MWh")
 
-    if results_rel is not None:
-        rs.save_optim_results(results_rel, "results_rel.pkl")
+    # Save results
+    rs.save_optim_results(results_rel, "results_rel.pkl")
 
     return results_rel
+
