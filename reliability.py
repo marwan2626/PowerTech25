@@ -3,257 +3,57 @@ Code for the publication Reliability-Constrained Thermal Storage Sizing in
 Multi-Energy Systems under Uncertainty
 Optimization by Marwan Mostafa 
 
-DRCC-OPF File
+Reliability File
 """
+
 ###############################################################################
-## IMPORT PACKAGES & SCRIPTS ## 
+## IMPORT PACKAGES & SCRIPTS ##
 ###############################################################################
 #### PACKAGES ####
+import time
+import numpy as np
+import pandas as pd
+import pandapower as pp
+from joblib import Parallel, delayed
+from tqdm import tqdm
 import gurobipy as gp
 from gurobipy import GRB
-import pickle as pkl
-import numpy as np
-import copy
-import pandas as pd
+import data as dt
 
 #### SCRIPTS ####
 import parameters as par
-import data as dt 
-import griddata as gd
 import results as rs
-###############################################################################
-## AUXILIARY FUNCTIONS ##
-###############################################################################
-def run_dc_load_flow(Bbus, net, P_mw):
-    # Convert P from MW to per unit
-    P_pu = P_mw / net.sn_mva
-    #print(f"P in MW: {P_mw}")
-    #print(f"Converted P to per unit: {P_pu}")
-
-    # Identify the slack bus (usually the bus connected to ext_grid)
-    slack_bus_index = net.ext_grid.bus.iloc[0]
-    #print(f"Slack Bus Index: {slack_bus_index}")
-    
-    # Reduce P_pu by removing the slack bus power
-    P_pu_reduced = np.delete(P_pu, slack_bus_index)
-    
-    # Remove slack bus row and column from Bbus to form the reduced Bbus
-    Bbus_reduced = np.delete(Bbus, slack_bus_index, axis=0)
-    Bbus_reduced = np.delete(Bbus_reduced, slack_bus_index, axis=1)
-    
-    # Solve for voltage angles (theta) in radians for the reduced system
-    theta_reduced = np.linalg.solve(Bbus_reduced, P_pu_reduced)
-    
-    # Initialize theta_full to include all buses with slack bus set to 0 radians
-    theta_full = np.zeros(len(net.bus), dtype=np.float64)
-    
-    # Insert the calculated angles for active buses into the original bus index space
-    idx = 0
-    for i in range(len(theta_full)):
-        if i != slack_bus_index:
-            theta_full[i] = theta_reduced[idx]
-            idx += 1
-    #print(f"Theta Full: {theta_full}")
-    # theta_full_degrees = (theta_full*180)/np.pi
-    # print(f"Theta Full (degrees): {theta_full_degrees}")
-    
-    # Initialize lists to store results
-    line_pl_mw = []
-    line_loading_percent = []
-    line_current_mag = []
-    transformer_pl_mw = []
-    
-    # Power flow calculations for each line
-    for line in net.line.itertuples():
-        from_bus = line.from_bus
-        to_bus = line.to_bus
-        base_voltage = net.bus.at[from_bus, 'vn_kv'] * 1e3  # Convert kV to V
-        x_pu = line.x_ohm_per_km * line.length_km / ((base_voltage ** 2) / net.sn_mva)
-        
-        # Calculate power flow in per unit
-        power_flow_pu = (theta_full[from_bus] - theta_full[to_bus]) / x_pu
-        # Convert to MW
-        power_flow_mw = power_flow_pu * net.sn_mva
-        line_pl_mw.append(power_flow_mw)
-        
-        # Calculate line current magnitude in kA
-        current_mag_ka = abs(power_flow_mw) / (np.sqrt(3)*base_voltage / 1e3)
-        line_current_mag.append(current_mag_ka)
-        
-        # Calculate line loading percent
-        if hasattr(line, 'max_i_ka'):
-            loading_percent = 100 * (current_mag_ka / line.max_i_ka)
-        else:
-            loading_percent = np.nan
-            print(f"Warning: 'max_i_ka' not found in net.line. 'line_loading_percent' set to NaN.")
-        
-        line_loading_percent.append(loading_percent)
-
-    # Power flow calculations for transformers
-    for trafo in net.trafo.itertuples():
-        hv_bus = trafo.hv_bus
-        lv_bus = trafo.lv_bus
-
-        # Transformer reactance in per unit (from its data)
-        x_pu = (trafo.vk_percent / 100) / trafo.sn_mva
-
-        # Power flow calculation for transformer (similar to a line)
-        power_flow_pu = (theta_full[hv_bus] - theta_full[lv_bus]) / x_pu
-        power_flow_mw = power_flow_pu * net.sn_mva  #1e6 nicht nötig
-        
-        # Account for transformer losses (copper and iron losses)
-        #copper_losses_mw = (trafo.vkr_percent / 100) * net.sn_mva / 1e6  # Copper losses #1e6 nicht nötig
-        #iron_losses_mw = trafo.pfe_kw / 1000  # Iron losses (already in kW)
-
-        # Correct external grid power (subtract losses)
-        #external_grid_power_mw = power_flow_mw - (copper_losses_mw + iron_losses_mw) #absolute needed because in some cases the transformer generated power
-        external_grid_power_mw = power_flow_mw #absolute needed because in some cases the transformer generated power
-
-        transformer_pl_mw.append(external_grid_power_mw)  # Store the corrected external grid power
-
-    
-    # Convert lists to Pandas Series and store them in a dictionary
-    var_results = {
-        'theta_degrees': pd.Series(np.degrees(theta_full), index=net.bus.index),
-        'var_theta': pd.Series(theta_full, index=net.bus.index),
-        'line_pl_mw': pd.Series(line_pl_mw, index=net.line.index),
-        'line_loading_percent': pd.Series(line_loading_percent, index=net.line.index),
-        'line_current_mag': pd.Series(line_current_mag, index=net.line.index),
-        'transformer_pl_mw': pd.Series(transformer_pl_mw, index=net.trafo.index)
-    }
-    
-    return var_results
-
-
-
-def calculate_variance_propagation(net, time_steps, const_load_heatpump, Bbus):
-    results = {
-        "time_step": [],
-        "theta_degrees": [],
-        "var_theta": [],
-        "line_loading_percent": [],
-        "line_current_mag": [],
-        "load_p_mw": [],
-        "sgen_p_mw": [],
-        "line_pl_mw": [],
-        'transformer_pl_mw': []  
-    }
-
-    line_indices = None
-
-    for t in time_steps:
-        # Update controls using const_pv and const_load
-        const_load_heatpump.time_step(net, time=t)
-        #print(f"Time step {t}:")
-        #print(net.load[['bus', 'p_mw']])  # Print load values after update
-
-        # Recalculate the power injection vector P immediately after the update
-        P = np.zeros(len(net.bus), dtype=np.float64)
-        #print(f"Bus indices for load: {net.load.bus.values.astype(int)}")
-        #print(f"Length of P: {len(P)}")
-        #if not net.load.empty:
-        #    P[net.load.bus.values.astype(int)] -= net.load.p_mw.values.astype(np.float64)
-        for bus, p_mw in zip(net.load.bus.values.astype(int), net.load.p_mw.values.astype(np.float64)):
-            #print(f"Before: P[{bus}] = {P[bus]}")
-            P[bus] -= p_mw
-            #print(f"After: P[{bus}] = {P[bus]} (Subtracted {p_mw})")
-
-        # Print load and generation values at each bus and time step
-        #print(f"Time step {t}:")
-        #print(f"Loads at each bus: {net.load.p_mw.values.tolist()}")
-        #print(f"Generation at each bus: {net.sgen.p_mw.values.tolist()}")
-        #print(f"Power Injection Vector (P): {P}")
-
-        # Run the DC load flow calculation
-        flow_results = run_dc_load_flow(Bbus, net, P)
-        #print(f"Time step {t}, Theta (flow_results): {flow_results['var_theta']}")
-
-        if line_indices is None:
-            line_indices = flow_results['line_pl_mw'].index
-
-        results["time_step"].append(t)
-        results["theta_degrees"].append(flow_results['theta_degrees'].to_numpy())
-        results["var_theta"].append(flow_results['var_theta'].to_numpy())
-        #print(f"After appending: {results['var_theta'][-1]}")        
-        results["line_loading_percent"].append(flow_results['line_loading_percent'].tolist())
-        results["line_current_mag"].append(flow_results['line_current_mag'].tolist())
-        results["load_p_mw"].append(net.load.p_mw.values.tolist())
-        results["sgen_p_mw"].append(net.sgen.p_mw.values.tolist())
-        results["line_pl_mw"].append(flow_results['line_pl_mw'].tolist())
-        results['transformer_pl_mw'].append(flow_results['transformer_pl_mw'].tolist())
-
-    theta_degrees_df = pd.DataFrame(results["theta_degrees"], index=results["time_step"], columns=net.bus.index)
-    var_theta_df = pd.DataFrame(results["var_theta"], index=results["time_step"], columns=net.bus.index)
-    #print(f"Variance Propagation Results: {var_theta_df}")
-    line_loading_percent_df = pd.DataFrame(results["line_loading_percent"], index=results["time_step"], columns=line_indices)
-    line_current_mag_df = pd.DataFrame(results["line_current_mag"], index=results["time_step"], columns=line_indices)
-    load_p_mw_df = pd.DataFrame(results["load_p_mw"], index=results["time_step"], columns=net.load.index)
-    sgen_p_mw_df = pd.DataFrame(results["sgen_p_mw"], index=results["time_step"], columns=net.sgen.index)
-    line_pl_mw_df = pd.DataFrame(results["line_pl_mw"], index=results["time_step"], columns=line_indices)
-    transformer_pl_mw_df = pd.DataFrame(results['transformer_pl_mw'], index=results["time_step"], columns=net.trafo.index)
-
-    var_results_df = pd.concat({
-        "theta_degrees": theta_degrees_df,
-        "var_theta": var_theta_df,
-        "line_loading_percent": line_loading_percent_df,
-        "line_current_mag": line_current_mag_df,
-        "load_p_mw": load_p_mw_df,
-        "sgen_p_mw": sgen_p_mw_df,
-        "line_pl_mw": line_pl_mw_df,
-        'transformer_pl_mw': transformer_pl_mw_df
-    }, axis=1)
-
-    #results_df.to_excel("output_results.xlsx")
-
-    var_theta_df = pd.DataFrame({
-    "time_step": results["time_step"],
-    "var_theta": [dict(zip(net.bus.index, var_theta)) for var_theta in results["var_theta"]]
-    })
-
-    return var_results_df, var_theta_df
 
 ###############################################################################
-## DRCC-OPF FUNCTIONS ##
+## Generate Samples ##
+###############################################################################
+# Generate failure scenarios
+def generate_failure_schedule(failure_rate, repair_time, time_steps):
+    n_steps = len(time_steps)  # Total number of timesteps
+    failure_schedule = np.ones(n_steps)  # Initialize as all operational
+    t = 0
+    while t < n_steps:
+        time_to_failure = max(0, np.random.exponential(1 / failure_rate))  # Avoid negative times
+        repair_duration = max(0, np.random.normal(repair_time))  # Avoid negative times
+        t_fail = int(t + time_to_failure)
+        t_repair = int(t_fail + repair_duration)
+        if t_fail < n_steps:
+            failure_schedule[t_fail:min(t_repair, n_steps)] = 0  # Mark failure period
+        t = t_repair
+    return failure_schedule
+
+
+###############################################################################
+## OPF ##
 ###############################################################################
 
 ### solve the OPF problem ###
-def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, Bbus):
-    variance_net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)
-    var_results, var_theta_df = calculate_variance_propagation(variance_net, time_steps, const_variance, Bbus)
-    #var_p_mw_t0 = var_results.loc[0, ("line_pl_mw")]
-    #print(f"Variance Propagation Results at time 0: {var_p_mw_t0}")
-    # Filter all line_pl_mw values across all time steps
-    var_P_line_dict = {}
-    var_P_trafo_dict = {}
+def solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_household, heatpump_scaling_factors_df, T_amb, Bbus, TS_capacity, TRAFO_FAIL, HP_FAIL, initial_storage_state):
 
-    for time_step in var_results.index:
-        # Access the line_pl_mw and transformer_pl_mw for the current time step
-        var_P_line = var_results.loc[time_step, ("line_pl_mw")]
-        var_P_trafo = var_results.loc[time_step, ("transformer_pl_mw")]
-
-        # Apply the filter: set values less than 1e-6 to 0
-        var_P_line = var_P_line.where(var_P_line.abs() >= 1e-6, 0)
-        #var_P_trafo = var_P_trafo.where(var_P_trafo.abs() >= 1e-6, 0)
-
-        # Save the filtered results in a nested dictionary
-        var_P_line_dict[time_step] = var_P_line.to_dict()
-        var_P_trafo_dict[time_step] = var_P_trafo.to_dict()
-        
-    # Access the results as var_P_line_dict[t][line]
-    #print(f"Var Line Value, {var_P_line_dict}")
-    #print(f"Var Trafo Value, {var_P_trafo_dict}")
-
-    pd.set_option('display.precision', 10)
     model = gp.Model("opf_with_dc_load_flow")
 
     # Define the costs
     curtailment_cost = par.curtailment_cost  
-    storage_cost = par.c_cost
-    r = 0.05 #interest rate
-    n= 20 #lifetime of the storage
-
-    storage_cost_levelized = storage_cost * ((r*(1+r)**n) / (((1+r)**n) - 1))
-    #print(f"Levelized Storage Cost: {storage_cost_levelized}")
 
     filepath = "electricityprice1h.csv"
     electricity_price = dt.get_electricity_price(filepath)['price']
@@ -261,13 +61,12 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
 
     HNS_price = par.HNS_cost
 
+
     ### Define the variables ###
     epsilon = 100e-9  # Small positive value to ensure some external grid usage
 
     # Extract transformer capacity in MW (assuming sn_mva is in MVA)
     transformer_capacity_mw = net.trafo['sn_mva'].values[0]
-    #print(f"Transformer Capacity: {transformer_capacity_mw}")
-
 
     # Initialize decision variables
     pv_gen_vars = {}  # Store PV generation decision variables
@@ -278,7 +77,6 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
     flexible_load_vars = {}  # New flexible load variables
     transformer_loading_vars = {}  # Store transformer loading percentage decision variables 
     transformer_loading_perc_vars = {}  # Store transformer loading percentage decision variables  
-    ts_capacity_vars = {}  # Store thermal storage capacity decision variables
     eta_pl_vars = {}  # Store partload electrical efficiency of heat pumps
     HNS_vars = {}  # Store HNS variables
 
@@ -317,13 +115,6 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
     flexible_load_buses = list(set(net.load[net.load['controllable'] == True].bus.values))
     non_flexible_load_buses = list(set(net.load[net.load['controllable'] == False].bus.values))
     #print(f"Flexible load buses: {flexible_load_buses}")
-
-    # Add thermal storage variables
-    ts_capacity_vars = model.addVars(
-        flexible_load_buses,
-        lb=0.0001,
-        name=f'ts_capacity'
-    )
 
     heat_demand_scaling = 1 / par.tsnet_eff
     COP = {}  # Coefficient of Performance (COP) for heat pumps
@@ -396,12 +187,6 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
         # Fix the slack bus angle to 0 radians
         model.addConstr(theta_vars[t][slack_bus_index] == 0, name=f'slack_theta_{t}')
 
-        # Compute maximum heat demand for each flexible load bus over the day
-        # max_heat_demand_per_bus = {
-        #     bus: max(flexible_time_synchronized_loads[t].get(bus, 0.0) for t in time_steps)
-        #     for bus in flexible_load_buses
-        # }
-
         # Define flexible load variables with global peak limit (par.hp_max_power)
         flexible_load_vars[t] = model.addVars(
             flexible_load_buses,
@@ -430,8 +215,6 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
         for bus in flexible_load_buses
     }
        
-    k_epsilon = np.sqrt((1 - par.epsilon) / par.epsilon)
-
     # Update SOF constraints for each flexible load bus
     for t_idx, t in enumerate(time_steps):
         for bus in flexible_load_buses:
@@ -454,20 +237,16 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
 
                     # 1. Heat Demand Coverage: flexible_load_vars and/or thermal storage must meet the demand (all in electrical equivalent)
                     model.addConstr(
-                        flexible_load_vars[t][bus] + ((ts_out_vars[t][bus] - ts_in_vars[t][bus]) / COP[t]) == (heat_demand * heat_demand_scaling) - HNS_vars[t][bus],
+                        flexible_load_vars[t][bus]*(1 - TRAFO_FAIL[t])*(1 - HP_FAIL[t]) + ((ts_out_vars[t][bus] - ts_in_vars[t][bus]) / COP[t]) == (heat_demand * heat_demand_scaling) - HNS_vars[t][bus],
                         name=f'heat_demand_coverage_{t}_{bus}'
                     )
 
                     # 3. Storage Charging: use excess power for storage charging if available
                     model.addConstr(
-                        ts_in_vars[t][bus] <= flexible_load_vars[t][bus] * COP[t] * eta_pl_vars[t][bus],
+                        ts_in_vars[t][bus] <= flexible_load_vars[t][bus] * COP[t] * eta_pl_vars[t][bus]*(1 - TRAFO_FAIL[t])*(1 - HP_FAIL[t]),
                         name=f'storage_charging_{t}_{bus}'
                     )
 
-                    # model.addConstr(
-                    #     ts_in_vars[t][bus] <= (ts_capacity_vars[bus] - energy_stored_vars[t][bus]),
-                    #     name=f'storage_input_limit_{t}_{bus}'
-                    # )
                     model.addConstr(
                         ts_out_vars[t][bus] <= energy_stored_vars[t][bus],
                         name=f'storage_output_limit_{t}_{bus}'
@@ -475,23 +254,24 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
 
                     # Update the state of fill (SOF) of the storage
                     # Initial SOF Constraint for the first timestep
-                    if t == 0:
+                    if t_idx == 0:
                         model.addConstr(
-                            energy_stored_vars[t][bus] == par.ts_sof_init * ts_capacity_vars[bus],
-                            name=f'initial_energy_{bus}'
+                            energy_stored_vars[t][bus] == initial_storage_state[bus],
+                            name=f'initial_energy_{t}_{bus}'
                         )
                     else:
+                        prev_t = time_steps[t_idx - 1]
                         model.addConstr(
                             energy_stored_vars[t][bus] ==
-                            energy_stored_vars[time_steps[t - 1]][bus] +
+                            energy_stored_vars[prev_t][bus] +
                             (par.ts_eff * ts_in_vars[t][bus]) -
                             (ts_out_vars[t][bus] / par.ts_eff) -
-                            (par.ts_alpha * energy_stored_vars[time_steps[t - 1]][bus] * (par.T_S-T_amb[t])),
+                            (par.ts_alpha * energy_stored_vars[prev_t][bus] * (par.T_S-T_amb[t])),
                             name=f'storage_energy_update_{t}_{bus}'
                         )
 
                     model.addConstr(
-                        ts_sof_vars[t][bus] * ts_capacity_vars[bus] == energy_stored_vars[t][bus],
+                        ts_sof_vars[t][bus] * TS_capacity == energy_stored_vars[t][bus],
                         name=f'sof_definition_{t}_{bus}'
                     )
                     # Use the flexible load variable for controllable loads
@@ -532,17 +312,10 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
 
             model.addConstr(P_pu_reduced[i] == power_balance_expr, name=f'power_flow_{t}_{i}')
 
-        # Total power balance constraint at the slack bus
-        # This enforces that the slack bus always balances generation and demand
-        # total_generation = gp.quicksum(pv_gen_vars[t][bus] for bus in pv_buses) if pv_buses.size > 0 else 0
-        # total_load = gp.quicksum(flexible_load_vars[t][bus] for bus in flexible_load_buses) + gp.quicksum(net.load.loc[net.load.bus == bus, 'p_mw'].values[0] 
-        #                         for bus in net.load.bus.values if bus not in flexible_load_buses)        
-        #model.addConstr(ext_grid_import_vars[t] - ext_grid_export_vars[t] == total_load - total_generation, name=f'power_balance_slack_{t}')
 
     # Enforce final state of fill to match initial state (0.5) for all flexible load buses
-    for bus in flexible_load_buses:
-        model.addConstr(ts_sof_vars[time_steps[-1]][bus] == 0.5, name=f'final_sof_balance_{bus}')
-
+    # for bus in flexible_load_buses:
+    #     model.addConstr(ts_sof_vars[time_steps[-1]][bus] == 0.5, name=f'final_sof_balance_{bus}')
 
     # Line power flow and loading constraints (with the corrected expression)
     for t in time_steps:
@@ -581,7 +354,7 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
                 # model.addConstr(abs_current_mag_ka <= (line.max_i_ka), 
                 #             name=f'abs_current_mag_constraint_{t}_{line.Index}')
 
-                model.addConstr(abs_power_flow_mw - par.DRCC_FLG*(k_epsilon * np.sqrt(var_P_line_dict[t][line.Index])) <= (line.max_i_ka * (sqrt3 * (base_voltage / 1e3))), 
+                model.addConstr(abs_power_flow_mw <= (line.max_i_ka * (sqrt3 * (base_voltage / 1e3))), 
                             name=f'abs_power_flow_constraint_{t}_{line.Index}')
 
             # Store results for each line in the time step
@@ -596,7 +369,7 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
             power_flow_mw = power_flow_pu * net.sn_mva
             model.addConstr(ext_grid_import_vars[t] - ext_grid_export_vars[t] == power_flow_mw, name=f'power_balance_slack_{t}')
 
-        transformer_loading_vars[t] = model.addVar(lb=0, ub=((par.max_trafo_loading*transformer_capacity_mw) - par.DRCC_FLG*(k_epsilon * np.sqrt(var_P_trafo_dict[t][0]))), name=f'transformer_loading_{t}')
+        transformer_loading_vars[t] = model.addVar(lb=0, ub=(par.max_trafo_loading*transformer_capacity_mw), name=f'transformer_loading_{t}')
         transformer_loading_perc_vars[t] = model.addVar(lb=0, name=f'transformer_loading_percent_{t}')
         model.addConstr(
             transformer_loading_vars[t] == (ext_grid_import_vars[t] + ext_grid_export_vars[t]),
@@ -615,7 +388,7 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
         gp.quicksum(electricity_price[t] * (flexible_load_vars[t][bus]) for bus in flexible_load_buses) +
         gp.quicksum(HNS_price * HNS_vars[t][bus] for bus in flexible_load_buses)
         for t in time_steps
-    ) + gp.quicksum(storage_cost_levelized * ts_capacity_vars[bus] for bus in flexible_load_buses)
+    )
     model.setObjective(total_cost, GRB.MINIMIZE)
 
     # After adding all constraints and variables
@@ -630,7 +403,7 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
 
     # Check if optimization was successful
     if model.status == gp.GRB.OPTIMAL:
-        print(f"OPF Optimal Objective Value: {model.ObjVal}")
+        #print(f"OPF Optimal Objective Value: {model.ObjVal}")
         # Extract optimized values for PV generation, external grid power, loads, and theta
         for t in time_steps:
             pv_gen_results[t] = {bus: pv_gen_vars[t][bus].x for bus in pv_buses}
@@ -660,29 +433,13 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
             thermal_storage_results['ts_out'][t] = {bus: ts_out_vars[t][bus].x for bus in flexible_load_buses}
             thermal_storage_results['ts_sof'][t] = {bus: ts_sof_vars[t][bus].x for bus in flexible_load_buses}
 
-            ts_capacity_results['capacity'] = {bus: ts_capacity_vars[bus].x for bus in flexible_load_buses}
+            ts_capacity_results['capacity'] = {bus: TS_capacity for bus in flexible_load_buses}
 
             # Extract numerical values for line results
             for line in net.line.itertuples():
                 line_results[t]["line_pl_mw"][line.Index] = line_results[t]["line_pl_mw"][line.Index].getValue()
                 line_results[t]["line_loading_percent"][line.Index] = line_results[t]["line_loading_percent"][line.Index].getValue()
                 line_results[t]["line_current_mag"][line.Index] = line_results[t]["line_current_mag"][line.Index].getValue()
-
-            # After optimization, print the key variable results
-            #print(f"Time Step {t}:")
-            #print(f"PV Generation: {[pv_gen_vars[t][bus].x for bus in pv_buses]}")
-            #print(f"External Grid Import: {ext_grid_import_vars[t].x}")
-            #print(f"External Grid Export: {ext_grid_export_vars[t].x}")
-            #print(f"Theta (angles): {[theta_vars[t][bus].x for bus in net.bus.index]}")
-            #print(f"Thermal Storage In: {thermal_storage_results['ts_in'][t]}")
-            #print(f"Thermal Storage Out: {thermal_storage_results['ts_out'][t]}")
-            #print(f"Thermal Storage SOF: {thermal_storage_results['ts_sof'][t]}")
-            #print(f"thermal storage capacity: {ts_capacity_results['capacity']}")
-            #print(f"Transformer Loading: {transformer_loading_vars[t].x}")
-
-            #for line in net.line.itertuples():
-                #print(f"Line {line.Index}: Power Flow MW = {line_results[t]['line_pl_mw'][line.Index]}, Loading % = {line_results[t]['line_loading_percent'][line.Index]}")
-
 
         # Return results in a structured format
         results = {
@@ -696,12 +453,6 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
             'thermal_storage': thermal_storage_results,  #  thermal storage results
             'thermal_storage_capacity': ts_capacity_results
         }
-
-        # Save the results to a file
-        if results is not None:
-            rs.save_optim_results(results, "drcc_results.pkl")
-
-        print(f"thermal storage capacity: {ts_capacity_results['capacity']}")
         
         return results
     
@@ -714,3 +465,119 @@ def solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, d
     else:
         print(f"OPF Optimization failed with status: {model.status}")
         return None
+
+
+
+###############################################################################
+## Reliability ANALYSIS ##
+###############################################################################
+
+def reliability_analysis(net, time_steps, const_load_heatpump, const_load_household, heatpump_scaling_factors_df, T_amb, Bbus):
+    # Define thermal storage capacity
+    TS_capacity = par.TS_capacity
+    # Define the number of scenarios
+    N_scenarios = par.N_scenarios
+
+    # Run Sequential Monte Carlo Simulation
+    results_rel = []
+
+    for scenario in range(N_scenarios):
+        print(f"Running scenario {scenario + 1}/{N_scenarios}...")
+
+        # Generate failure schedules for trafo and hp
+        trafo_failure = generate_failure_schedule(par.failure_rate_trafo, par.repair_time_trafo, time_steps)
+        hp_failure = generate_failure_schedule(par.failure_rate_hp, par.repair_time_hp, time_steps)
+
+
+        # Convert failure schedules to flags
+        TRAFO_FAIL = {t: int(trafo_failure[i] == 0) for i, t in enumerate(time_steps)}  # 1 if failed
+        HP_FAIL = {t: int(hp_failure[i] == 0) for i, t in enumerate(time_steps)}        # 1 if failed
+
+        # Solve original OPF without failures
+        original_results = rs.load_optim_results("drcc_results.pkl")
+
+        # Initialize results dataframe with original results
+        results_df = {
+            "pv_gen": original_results["pv_gen"].copy(),
+            "load": original_results["load"].copy(),
+            "ext_grid_import": original_results["ext_grid_import"].copy(),
+            "ext_grid_export": original_results["ext_grid_export"].copy(),
+            "theta": original_results["theta"].copy(),
+            "line_results": original_results["line_results"].copy(),
+            "transformer_loading": original_results["transformer_loading"].copy(),
+            "thermal_storage": original_results["thermal_storage"].copy(),
+            "thermal_storage_capacity": original_results["thermal_storage_capacity"].copy(),
+        }
+
+        # Initialize state variables
+        failure_triggered = False
+
+
+        for t in time_steps:
+            # Check if a failure has occurred
+            if not failure_triggered and TRAFO_FAIL[t] == 0 and HP_FAIL[t] == 0:
+                # No failure yet: Use original results
+                continue
+
+            # A failure has occurred or failure mode is active
+            failure_triggered = True
+
+            # Define rolling horizon
+            rolling_horizon_steps = [s for s in time_steps if t <= s < t + par.horizon]
+
+            # Extract initial storage state directly from results_df
+            initial_storage_state = {
+                bus: results_df["thermal_storage"]["ts_sof"][t][bus] * TS_capacity
+                for bus in results_df["thermal_storage"]["ts_sof"][t]
+            }
+
+            # Solve OPF for the rolling horizon
+            results_opf = solve_opf_with_failures(
+                net, rolling_horizon_steps, const_load_heatpump, const_load_household, 
+                heatpump_scaling_factors_df, T_amb, Bbus, TS_capacity, 
+                TRAFO_FAIL, HP_FAIL, initial_storage_state
+            )
+            # Update results for the rolling horizon steps
+            for t_rolling in rolling_horizon_steps:
+                if t_rolling >= len(time_steps):
+                    break
+                results_df["pv_gen"][t_rolling] = results_opf["pv_gen"][t_rolling]
+                results_df["load"][t_rolling]["flexible_load"] = results_opf["load"][t_rolling]["flexible_loads"]
+                results_df["load"][t_rolling]["non_flexible_load"] = results_opf["load"][t_rolling]["non_flexible_loads"]
+                results_df["load"][t_rolling]["HNS"] = results_opf["load"][t_rolling]["HNS"]
+                results_df["ext_grid_import"][t_rolling] = results_opf["ext_grid_import"][t_rolling]
+                results_df["ext_grid_export"][t_rolling] = results_opf["ext_grid_export"][t_rolling]
+                results_df["theta"][t_rolling] = results_opf["theta"][t_rolling]
+                results_df["line_results"][t_rolling]["line_pl_mw"] = results_opf["line_results"][t_rolling]["line_pl_mw"]
+                results_df["line_results"][t_rolling]["line_loading_percent"] = results_opf["line_results"][t_rolling]["line_loading_percent"]
+                results_df["line_results"][t_rolling]["line_current_mag"] = results_opf["line_results"][t_rolling]["line_current_mag"]
+                results_df["transformer_loading"][t_rolling] = results_opf["transformer_loading"][t_rolling]
+                results_df["thermal_storage"]["ts_in"][t_rolling] = results_opf["thermal_storage"]["ts_in"][t_rolling]
+                results_df["thermal_storage"]["ts_out"][t_rolling] = results_opf["thermal_storage"]["ts_out"][t_rolling]
+                results_df["thermal_storage"]["ts_sof"][t_rolling] = results_opf["thermal_storage"]["ts_sof"][t_rolling]
+
+        # Collect scenario results
+        HNS_total = sum(
+            sum(results_df["load"][t]["HNS"].values()) for t in time_steps
+        )        
+        final_storage = results_df["thermal_storage"]["ts_sof"][time_steps[-1]]
+
+        results_rel.append({
+            "scenario": scenario,
+            "HNS": HNS_total,
+            "final_storage": final_storage
+        })
+
+    # After the for loop over scenarios, aggregate results
+    total_HNS = sum([res["HNS"] for res in results_rel])  # Total HNS across all scenarios
+    EHNS = total_HNS / N_scenarios  # Expected HNS
+
+    # Print reliability study summary
+    print(f"Reliability study for TS_capacity = {TS_capacity} MWh")
+    print(f"  Total HNS = {total_HNS:.2f} MWh (Total Heat Not Supplied)")
+    print(f"  EHNS = {EHNS:.2f} MWh (Expected Heat Not Supplied)")
+
+    if results_rel is not None:
+        rs.save_optim_results(results_rel, "results_rel.pkl")
+
+    return results_rel

@@ -33,7 +33,6 @@ max_trafo_loading = 0.7 # max transformer loading
 
 ### THERMAL SYSTEM ###
 hp_max_power = 0.5 # heat pump max power in MW
-ts_size_mwh = 48 # thermal storage size in MWh
 ts_sof_init = 0.5 # initial state of fill of thermal storage
 ts_eff = 0.90 # thermal storage efficiency
 ts_alpha = 0.0001 # thermal storage heat loss factor
@@ -67,3 +66,13 @@ epsilon = 0.05 # CC violation probability
 N_MC = 1000 # number of samples for monte-carlo simulation
 
 
+
+# Define reliability parameters
+failure_rate_trafo = 0.0054  # failures per hour for transformer
+repair_time_trafo = 10      # hours to repair transformer
+failure_rate_hp = 0.005      # failures per hour for heat pump
+repair_time_hp = 24         # hours to repair heat pump
+
+N_scenarios = 1000  # Number of Monte Carlo scenarios
+horizon = 24
+TS_capacity = 2.0363383769324406
