@@ -52,7 +52,7 @@ c_cost = 10000 #€/MWh cost of ts energy storage in €/MWh
 
 ## DRCC ##
 DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.7 # CC violation probability
+epsilon = 0.25 # CC violation probability
 ### FORECAST ###
 N_MC = 1000 # number of samples for monte-carlo simulation
 
@@ -65,8 +65,9 @@ repair_time_hp = 24         # hours to repair heat pump
 failure_rate_ts = 0.001/8760      # failures per hour for thermal storage
 repair_time_ts = 48         # hours to repair thermal storage
 
-N_scenarios = 1000  # Number of Monte Carlo scenarios
-TS_capacity = 0.5
+N_scenarios = 10000  # Number of Monte Carlo scenarios
+TS_capacity = 1.252848358
+
 #failure_timestep_trafo = 120
 #failure_timestep_hp = 48
 #failure_timestep_ts = 10

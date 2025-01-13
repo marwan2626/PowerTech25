@@ -21,11 +21,11 @@ import reliability_parallel as rl
 net, const_load_household, const_load_heatpump, time_steps, df_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb = gd.setup_grid_powertech25(season='winter')
 Bbus = dt.calculate_bbus_matrix(net)
 
-results_drcc = drcc.solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, Bbus)
+#results_drcc = drcc.solve_drcc_opf(net, time_steps, const_load_heatpump, const_load_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, Bbus)
 #pl.plot_opf_results_plotly(results_drcc)
 
 ### RELIABILITY ANALYSIS ###
-#results_rel = rl.reliability_analysis(net, time_steps, const_load_heatpump, const_load_household, T_amb, Bbus, n_jobs=-1)
+results_rel = rl.reliability_analysis(net, time_steps, const_load_heatpump, const_load_household, T_amb, Bbus, n_jobs=-1)
 
 
 
