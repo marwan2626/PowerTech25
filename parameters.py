@@ -62,11 +62,11 @@ failure_rate_trafo = 0.0054/8760  # failures per hour for transformer
 repair_time_trafo = 10      # hours to repair transformer
 failure_rate_hp = 0.1/8760      # failures per hour for heat pump
 repair_time_hp = 24         # hours to repair heat pump
-failure_rate_ts = 0.001/8760      # failures per hour for thermal storage
+failure_rate_ts = 0.005/8760      # failures per hour for thermal storage
 repair_time_ts = 48         # hours to repair thermal storage
 
-N_scenarios = 10000  # Number of Monte Carlo scenarios
-TS_capacity = 1.252848358
+N_scenarios = 100000  # Number of Monte Carlo scenarios
+TS_capacity = 0.560543026
 
 #failure_timestep_trafo = 120
 #failure_timestep_hp = 48
