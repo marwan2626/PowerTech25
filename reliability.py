@@ -18,11 +18,14 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 import gurobipy as gp
 from gurobipy import GRB
-import data as dt
+import matplotlib.pyplot as plt
+
 
 #### SCRIPTS ####
 import parameters as par
 import results as rs
+import data as dt
+import plot as pl
 
 ###############################################################################
 ## Generate Samples ##
@@ -56,6 +59,34 @@ def generate_all_failure_schedules(failure_rate_trafo, repair_time_trafo,
     ]
     return trafo_failures, hp_failures
 
+###############################################################################
+## DEBUG ##
+###############################################################################
+def generate_deterministic_failure_schedule(failure_timestep, repair_time, time_steps):
+
+    n_steps = len(time_steps)
+    failure_schedule = np.ones(n_steps)  # Initialize as all operational
+    
+    # Calculate the end of the repair period
+    t_repair = int(failure_timestep + repair_time)
+    
+    # Set failure period in the schedule
+    if failure_timestep < n_steps:
+        failure_schedule[failure_timestep:min(t_repair, n_steps)] = 0  # Mark failure period
+    
+    return failure_schedule
+
+def generate_all_deterministic_failure_schedules(failure_timestep, repair_time_trafo, 
+                                                 repair_time_hp, time_steps, n_scenarios):
+    trafo_failures = [
+        generate_deterministic_failure_schedule(failure_timestep, repair_time_trafo, time_steps)
+        for _ in range(n_scenarios)
+    ]
+    hp_failures = [
+        generate_deterministic_failure_schedule(failure_timestep, repair_time_hp, time_steps)
+        for _ in range(n_scenarios)
+    ]
+    return trafo_failures, hp_failures
 
 ###############################################################################
 ## OPF ##
@@ -493,11 +524,39 @@ def reliability_analysis(net, time_steps, const_load_heatpump, const_load_househ
     N_scenarios = par.N_scenarios
 
     # Generate failure schedules for all scenarios
-    trafo_failures, hp_failures = generate_all_failure_schedules(
-        par.failure_rate_trafo, par.repair_time_trafo,
-        par.failure_rate_hp, par.repair_time_hp,
-        time_steps, N_scenarios
+    # trafo_failures, hp_failures = generate_all_failure_schedules(
+    #     par.failure_rate_trafo, par.repair_time_trafo,
+    #     par.failure_rate_hp, par.repair_time_hp,
+    #     time_steps, N_scenarios
+    # )
+
+    # Generate deterministic failure schedules for all scenarios
+    trafo_failures, hp_failures = generate_all_deterministic_failure_schedules(
+        par.failure_timestep, par.repair_time_trafo,
+        par.repair_time_hp, time_steps, N_scenarios
     )
+    ## debug failure schedule
+    # Plot the failure schedules
+    plt.figure(figsize=(10, 6))
+
+    # Plot transformer failures
+    plt.plot(time_steps, trafo_failures[0], label="Transformer Failures", drawstyle="steps-post", linewidth=2)
+
+    # Plot heat pump failures
+    plt.plot(time_steps, hp_failures[0], label="Heat Pump Failures", drawstyle="steps-post", linewidth=2, linestyle="--")
+
+    # Customize the plot
+    plt.title("Failure Schedules for Transformer and Heat Pump", fontsize=14)
+    plt.xlabel("Time Steps", fontsize=12)
+    plt.ylabel("Operational Status (1=Operational, 0=Failed)", fontsize=12)
+    plt.ylim(-0.1, 1.1)
+    plt.grid(True, linestyle="--", alpha=0.7)
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    # Show the plot
+    plt.show()
+
     print("generated failure schedules")
 
     # Run Sequential Monte Carlo Simulation
@@ -588,6 +647,8 @@ def reliability_analysis(net, time_steps, const_load_heatpump, const_load_househ
             "HNS": HNS_total,
             "final_storage": final_storage
         })
+
+
 
     # After the for loop over scenarios, aggregate results
     total_HNS = sum([res["HNS"] for res in results_rel])  # Total HNS across all scenarios
