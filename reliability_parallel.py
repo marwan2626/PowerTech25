@@ -172,14 +172,8 @@ def solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_hou
     Bbus_reduced = np.delete(Bbus_reduced, slack_bus_index, axis=1)
 
     # Dictionaries to store results
-    pv_gen_results = {}
     load_results = {}
-    ext_grid_import_results = {}
-    ext_grid_export_results = {}
-    theta_results = {}
     line_results = {}
-    transformer_loading_results = {}
-    ts_capacity_results = {}
     thermal_storage_results = {
         'ts_in': {t: {} for t in time_steps},
         'ts_out': {t: {} for t in time_steps},
@@ -489,13 +483,7 @@ def solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_hou
     if model.status == gp.GRB.OPTIMAL:
         #print(f"OPF Optimal Objective Value: {model.ObjVal}")
         # Extract optimized values for PV generation, external grid power, loads, and theta
-        for t in time_steps:
-            pv_gen_results[t] = {bus: pv_gen_vars[t][bus].x for bus in pv_buses}
-            ext_grid_import_results[t] = ext_grid_import_vars[t].x
-            ext_grid_export_results[t] = ext_grid_export_vars[t].x
-            theta_results[t] = {bus: theta_vars[t][bus].x for bus in net.bus.index}
-            transformer_loading_results[t] = transformer_loading_perc_vars[t].x
-            
+        for t in time_steps:            
             # Separate flexible and non-flexible load results
             load_results[t] = {
                 'flexible_loads': {
@@ -517,25 +505,10 @@ def solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_hou
             thermal_storage_results['ts_out'][t] = {bus: ts_out_vars[t][bus].x for bus in flexible_load_buses}
             thermal_storage_results['ts_sof'][t] = {bus: ts_sof_vars[t][bus].x for bus in flexible_load_buses}
 
-            ts_capacity_results['capacity'] = {bus: par.TS_capacity for bus in flexible_load_buses}
-
-            # Extract numerical values for line results
-            for line in net.line.itertuples():
-                line_results[t]["line_pl_mw"][line.Index] = line_results[t]["line_pl_mw"][line.Index].getValue()
-                line_results[t]["line_loading_percent"][line.Index] = line_results[t]["line_loading_percent"][line.Index].getValue()
-                line_results[t]["line_current_mag"][line.Index] = line_results[t]["line_current_mag"][line.Index].getValue()
-
         # Return results in a structured format
         results = {
-            'pv_gen': pv_gen_results,
             'load': load_results,
-            'ext_grid_import': ext_grid_import_results,
-            'ext_grid_export': ext_grid_export_results,
-            'theta': theta_results,  # Add theta results to the final results
-            'line_results': line_results,  # Line-specific results added
-            'transformer_loading': transformer_loading_results,
             'thermal_storage': thermal_storage_results,  #  thermal storage results
-            'thermal_storage_capacity': ts_capacity_results
         }
 
         return results
@@ -567,8 +540,7 @@ def run_single_scenario(
     TS_capacity,
     trafo_failure,
     hp_failure,
-    ts_failure,
-    original_results,
+    ts_failure
 ):
     # Convert failure schedules to flags
     TRAFO_FAIL = {t: int(trafo_failure[i] == 0) for i, t in enumerate(time_steps)}
@@ -578,16 +550,15 @@ def run_single_scenario(
     # Check if there is no failure at all in the scenario
     if all(TRAFO_FAIL[t] == 0 for t in time_steps) and all(HP_FAIL[t] == 0 for t in time_steps):
         # If no failure, skip OPF and use the original results directly
-        results_df = original_results
+        HNS_total = 0
+        final_storage = 0.5
+
     else:
         # If there are failures, run OPF with failures
         results_df = solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_household, T_amb, Bbus, TS_capacity, TRAFO_FAIL, HP_FAIL, TS_FAIL)
-
-    #plot opf results
-    #pl.plot_opf_results_plotly(results_df)
     
-    HNS_total = sum(sum(results_df["load"][t]["HNS"].values()) for t in time_steps) + np.abs(sum(results_df["thermal_storage"]["ts_sof"][time_steps[-1]].values()) -0.5)*par.TS_capacity
-    final_storage = results_df["thermal_storage"]["ts_sof"][time_steps[-1]]
+        HNS_total = sum(sum(results_df["load"][t]["HNS"].values()) for t in time_steps) + np.abs(sum(results_df["thermal_storage"]["ts_sof"][time_steps[-1]].values()) -0.5)*par.TS_capacity
+        final_storage = results_df["thermal_storage"]["ts_sof"][time_steps[-1]]
 
     return {
         "scenario": scenario,
@@ -599,7 +570,7 @@ def run_single_scenario(
 
 def reliability_analysis(
     net, time_steps, const_load_heatpump, const_load_household, 
-    T_amb, Bbus, n_jobs=-1
+    T_amb, Bbus, n_jobs
 ):
     TS_capacity = par.TS_capacity
     N_scenarios = par.N_scenarios
@@ -609,44 +580,12 @@ def reliability_analysis(
                                    par.failure_rate_hp, par.repair_time_hp,
                                    par.failure_rate_ts, par.repair_time_ts, 
                                    time_steps, N_scenarios)
-    # Generate deterministic failure schedules for all scenarios
-    # trafo_failures, hp_failures, ts_failures = generate_all_deterministic_failure_schedules(par.failure_timestep_trafo, par.repair_time_trafo, 
-    #                                              par.failure_timestep_hp, par.repair_time_hp, 
-    #                                              par.failure_timestep_ts, par.repair_time_ts,
-    #                                              time_steps, N_scenarios)
-    ## debug failure schedule
-    # # Plot the failure schedules
-    # plt.figure(figsize=(10, 6))
-
-    # # Plot transformer failures
-    # plt.plot(time_steps, trafo_failures[0], label="Transformer Failures", drawstyle="steps-post", linewidth=2)
-
-    # # Plot heat pump failures
-    # plt.plot(time_steps, hp_failures[0], label="Heat Pump Failures", drawstyle="steps-post", linewidth=2, linestyle="--")
-
-    # # Plot thermal storage failures
-    # plt.plot(time_steps, ts_failures[0], label="Thermal Storage Failures", drawstyle="steps-post", linewidth=2, linestyle=":")
-
-    # # Customize the plot
-    # plt.title("Failure Schedules for Transformer and Heat Pump", fontsize=14)
-    # plt.xlabel("Time Steps", fontsize=12)
-    # plt.ylabel("Operational Status (1=Operational, 0=Failed)", fontsize=12)
-    # plt.ylim(-0.1, 1.1)
-    # plt.grid(True, linestyle="--", alpha=0.7)
-    # plt.legend(fontsize=12)
-    # plt.tight_layout()
-
-    # # Show the plot
-    # plt.show()
 
     print("generated failure schedules")
 
-    # Load original OPF results
-    original_results = rs.load_optim_results("drcc_results.pkl")
-
     # Use joblib for parallel processing
     scenarios = range(N_scenarios)
-    results_rel = Parallel(n_jobs=n_jobs)(
+    results_rel = Parallel(n_jobs=n_jobs, temp_folder='/Volumes/Crucial SSD/joblib')(
         delayed(run_single_scenario)(
             scenario,
             net.deepcopy(),
@@ -658,8 +597,7 @@ def reliability_analysis(
             TS_capacity,
             trafo_failures[scenario],
             hp_failures[scenario],
-            ts_failures[scenario],
-            original_results,
+            ts_failures[scenario]
         )
         for scenario in tqdm(scenarios, desc="Processing scenarios")
     )

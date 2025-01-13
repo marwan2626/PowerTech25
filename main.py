@@ -25,7 +25,7 @@ Bbus = dt.calculate_bbus_matrix(net)
 #pl.plot_opf_results_plotly(results_drcc)
 
 ### RELIABILITY ANALYSIS ###
-results_rel = rl.reliability_analysis(net, time_steps, const_load_heatpump, const_load_household, T_amb, Bbus, n_jobs=-1)
+results_rel = rl.reliability_analysis(net, time_steps, const_load_heatpump, const_load_household, T_amb, Bbus, n_jobs=2)
 
 
 
