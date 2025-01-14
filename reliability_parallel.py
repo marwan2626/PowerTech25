@@ -585,7 +585,7 @@ def reliability_analysis(
 
     # Use joblib for parallel processing
     scenarios = range(N_scenarios)
-    results_rel = Parallel(n_jobs=n_jobs, temp_folder='/Volumes/Crucial SSD/joblib')(
+    results_rel = Parallel(n_jobs=n_jobs)(
         delayed(run_single_scenario)(
             scenario,
             net.deepcopy(),

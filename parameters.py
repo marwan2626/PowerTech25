@@ -66,7 +66,7 @@ failure_rate_ts = 0.005/8760      # failures per hour for thermal storage
 repair_time_ts = 48         # hours to repair thermal storage
 
 N_scenarios = 10000  # Number of Monte Carlo scenarios
-TS_capacity = 1.252848358
+TS_capacity = 0.560543026
 
 #failure_timestep_trafo = 120
 #failure_timestep_hp = 48
