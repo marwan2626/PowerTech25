@@ -48,25 +48,26 @@ T_S = 75+273.15 # temperature of the heat source in K
 ### Optimization Costs ###
 curtailment_cost = 150  # €/MW for curtailing PV (set higher than import/export costs)
 HNS_cost = 5000  # €/MWh for HNS
-c_cost = 10000 #€/MWh cost of ts energy storage in €/MWh
+c_cost = 8000 #€/MWh cost of ts energy storage in €/MWh
 
 ## DRCC ##
-DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.25 # CC violation probability
+DRCC_FLG = 0 # DRCC flag, 1 = enable, 0 = disable
+epsilon = 0.15 # CC violation probability
 ### FORECAST ###
 N_MC = 1000 # number of samples for monte-carlo simulation
 
 
 # Define reliability parameters
-failure_rate_trafo = 0.0054/8760  # failures per hour for transformer
+failure_rate_trafo = 0.0054/168  # failures per hour for transformer
 repair_time_trafo = 10      # hours to repair transformer
-failure_rate_hp = 0.1/8760      # failures per hour for heat pump
+failure_rate_hp = 0.1/168      # failures per hour for heat pump
 repair_time_hp = 24         # hours to repair heat pump
-failure_rate_ts = 0.005/8760      # failures per hour for thermal storage
-repair_time_ts = 48         # hours to repair thermal storage
+failure_rate_ts = 0.001     # failures per hour for thermal storage
+repair_time_ts = 0         # hours to repair thermal storage
 
-N_scenarios = 10000  # Number of Monte Carlo scenarios
-TS_capacity = 0.560543026
+N_scenarios = 200000  # Number of Monte Carlo scenarios
+TS_capacity = 0.755075552
+
 
 #failure_timestep_trafo = 120
 #failure_timestep_hp = 48

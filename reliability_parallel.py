@@ -287,8 +287,8 @@ def solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_hou
     # Update SOF constraints for each flexible load bus
     for t_idx, t in enumerate(time_steps):
         for bus in flexible_load_buses:
-            ts_in_vars[t][bus] = model.addVar(lb=0, ub=par.ts_in_max*(1-TS_FAIL[t]), name=f'ts_in_{t}_{bus}')
-            ts_out_vars[t][bus] = model.addVar(lb=0, ub=par.ts_out_max*(1-TS_FAIL[t]), name=f'ts_out_{t}_{bus}')
+            ts_in_vars[t][bus] = model.addVar(lb=0, ub=par.ts_in_max, name=f'ts_in_{t}_{bus}')
+            ts_out_vars[t][bus] = model.addVar(lb=0, ub=par.ts_out_max, name=f'ts_out_{t}_{bus}')
             ts_sof_vars[t][bus] = model.addVar(lb=0, ub=1.0, name=f'ts_sof_{t}_{bus}')  # SOF as percentage (0 to 1)
             energy_stored_vars[t][bus] = model.addVar(lb=0, name=f'energy_stored_{t}_{bus}')
 
@@ -557,7 +557,8 @@ def run_single_scenario(
         # If there are failures, run OPF with failures
         results_df = solve_opf_with_failures(net, time_steps, const_load_heatpump, const_load_household, T_amb, Bbus, TS_capacity, TRAFO_FAIL, HP_FAIL, TS_FAIL)
     
-        HNS_total = sum(sum(results_df["load"][t]["HNS"].values()) for t in time_steps) + np.abs(sum(results_df["thermal_storage"]["ts_sof"][time_steps[-1]].values()) -0.5)*par.TS_capacity
+        #HNS_total = sum(sum(results_df["load"][t]["HNS"].values()) for t in time_steps) + np.abs(sum(results_df["thermal_storage"]["ts_sof"][time_steps[-1]].values()) -0.5)*par.TS_capacity
+        HNS_total = sum(sum(results_df["load"][t]["HNS"].values()) for t in time_steps) 
         final_storage = results_df["thermal_storage"]["ts_sof"][time_steps[-1]]
 
     return {
