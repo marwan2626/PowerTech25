@@ -357,22 +357,82 @@ def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
     num_lines = len(net.line)
     num_trafo = len(net.trafo)
 
+    Z = calculate_z_matrix(net)
+
     P_branch = np.zeros(num_lines)
     Q_branch = np.zeros(num_lines)
+
 
     for line_idx in range(num_lines):
         from_bus = net.line.from_bus[line_idx]
         to_bus = net.line.to_bus[line_idx]
-        P_branch[line_idx] = P_accumulated[to_bus]
-        Q_branch[line_idx] = Q_accumulated[to_bus]
 
-    # Transformer Power (Only for output, not current calculation)
+        # Accumulated Power at Receiving End
+        P_recv = P_accumulated[to_bus]
+        Q_recv = Q_accumulated[to_bus]
+
+        # Extract Line Impedance from Z
+        line_z = Z[line_idx]  # Line impedance
+        R_line = np.real(line_z)
+        X_line = np.imag(line_z)
+
+        # Estimated To-Bus Voltage (Avoid divide-by-zero)
+        V_to = max(V_nodes[to_bus], 1e-4)
+
+        # Compute Line Losses
+        P_loss_line = R_line * (P_recv**2 + Q_recv**2) / V_to**2
+        Q_loss_line = X_line * (P_recv**2 + Q_recv**2) / V_to**2
+
+        # Estimate From-Bus Power (Sending End)
+        P_send = P_recv - P_loss_line
+        Q_send = Q_recv - Q_loss_line
+
+        # Store results
+        P_branch[line_idx] = P_send
+        Q_branch[line_idx] = Q_send
+
+    # Transformer Power
     P_trafo = np.zeros(num_trafo)
     Q_trafo = np.zeros(num_trafo)
+    S_trafo = np.zeros(num_trafo)
+    Trafo_loading_percent = np.zeros(num_trafo)
+
+
+
     for trafo_idx in range(num_trafo):
         lv_bus = net.trafo.lv_bus[trafo_idx]
-        P_trafo[trafo_idx] = P_accumulated[lv_bus]  
-        Q_trafo[trafo_idx] = Q_accumulated[lv_bus]
+        hv_bus = net.trafo.hv_bus[trafo_idx]
+
+        # Accumulated Power at LV Side
+        P_LV = P_accumulated[lv_bus]
+        Q_LV = Q_accumulated[lv_bus]
+
+        # Extract Transformer Impedance from Z
+        trafo_z = Z[len(net.line) + trafo_idx]  # Transformer impedance is after lines in Z
+        R_trafo = np.real(trafo_z)
+        X_trafo = np.imag(trafo_z)
+        print(f"Trafo {trafo_idx} Z: {trafo_z}")
+
+        # Estimated LV Voltage (Avoid divide-by-zero)
+        V_LV = max(V_nodes[lv_bus], 1e-4) 
+        print(f"Trafo {trafo_idx} V_LV: {V_LV}") 
+
+        # Compute Transformer Losses
+        P_loss_trafo = R_trafo * (P_LV**2 + Q_LV**2) / V_LV**2
+        Q_loss_trafo = X_trafo * (P_LV**2 + Q_LV**2) / V_LV**2
+
+        # Estimate HV-Side Power
+        P_HV = P_LV - P_loss_trafo
+        Q_HV = Q_LV - Q_loss_trafo
+
+        # Store results
+        P_trafo[trafo_idx] = P_HV  
+        Q_trafo[trafo_idx] = Q_HV  
+        S_trafo[trafo_idx] = np.sqrt(P_HV**2 + Q_HV**2)
+
+        # Compute loading percentage
+        S_rated = net.trafo.sn_mva.iloc[trafo_idx]  # Transformer rated power
+        Trafo_loading_percent[trafo_idx] = (S_trafo[trafo_idx] / S_rated) * 100
 
     # Compute complex power flow for lines
     S_branch = P_branch + 1j * Q_branch  # MW + jMVar
@@ -386,8 +446,6 @@ def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
     # Convert current to kA (using base voltage)
     V_base_kv = net.bus.vn_kv.iloc[1]  # Just take the first value
     I_branch_ka = I_branch_pu * (net.sn_mva / (np.sqrt(3) * V_base_kv))  # Convert to kA
-    #I_branch_ka = I_branch_pu / (V_base_kv * np.sqrt(3))   # Convert to kA
-
 
     # Create final results dictionary
     results = {
@@ -398,12 +456,10 @@ def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
         'Q_line_flow': pd.Series(Q_branch, index=net.line.index),  # MVar
         'P_trafo_flow': pd.Series(P_trafo, index=net.trafo.index) if num_trafo > 0 else pd.Series([], dtype=np.float64),  # MW
         'Q_trafo_flow': pd.Series(Q_trafo, index=net.trafo.index) if num_trafo > 0 else pd.Series([], dtype=np.float64),  # MVar
+        'S_trafo': pd.Series(S_trafo, index=net.trafo.index) if num_trafo > 0 else pd.Series([], dtype=np.float64),  # MVA
+        'Trafo_loading_percent': pd.Series(Trafo_loading_percent, index=net.trafo.index) if num_trafo > 0 else pd.Series([], dtype=np.float64),  # %
         'I_branch': pd.Series(np.abs(I_branch_ka), index=net.line.index)  # kA (ONLY FOR LINES)
     }
-
-    print("\n=== Final Power Flow Results ===")
-    print("Transformer power flow:\n", results['P_trafo_flow'])
-    print("Line power flow:\n", results['P_line_flow'])
 
     return results
 
@@ -418,7 +474,9 @@ def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const
         "line_ql_mvar": [],
         "trafo_pl_mw": [],
         "trafo_ql_mvar": [],
-        "I_branch": [],  # Store only line currents
+        "S_trafo": [],  # Apparent power of transformer
+        "Trafo_loading_percent": [],  # Transformer loading percentage
+        "I_branch": [],
         "load_p_mw": [],
         "sgen_p_mw": []
     }
@@ -439,37 +497,41 @@ def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const
         if not net.load.empty:
             for i, bus in enumerate(net.load.bus.values.astype(int)):
                 P[bus] -= net.load.p_mw.iloc[i]
-                Q[bus] -= net.load.q_mvar.iloc[i]  # Ensure consistent indexing for Q
+                Q[bus] -= net.load.q_mvar.iloc[i]
 
         if not net.sgen.empty:
             for i, bus in enumerate(net.sgen.bus.values.astype(int)):
                 P[bus] += net.sgen.p_mw.iloc[i]
-                Q[bus] += net.sgen.q_mvar.iloc[i]  # Ensure consistent indexing for Q
+                Q[bus] += net.sgen.q_mvar.iloc[i]
 
-        # Run LinDistFlow calculation with the corrected Z matrix
+        # Run LinDistFlow calculation with corrected Z matrix
         flow_results = run_lindistflow(Gbus, Bbus, net, P, Q)
 
         # Extract relevant results
-        I_branch = flow_results["I_branch"]  # Get branch currents
+        I_branch = flow_results["I_branch"]
 
-        num_lines = len(net.line)  # Number of lines
-        results["I_branch"].append(I_branch[:num_lines])  # Store only line currents
+        num_lines = len(net.line)
+        results["I_branch"].append(I_branch[:num_lines])
 
         results["time_step"].append(t)
         results["V_magnitude"].append(flow_results["V_magnitude"])
-        results["P_node"].append(flow_results["P_node"])
-        results["Q_node"].append(flow_results["Q_node"])
-        results["line_pl_mw"].append(flow_results["P_line_flow"])  
-        results["line_ql_mvar"].append(flow_results["Q_line_flow"])  
-        results["trafo_pl_mw"].append(flow_results["P_trafo_flow"])  
-        results["trafo_ql_mvar"].append(flow_results["Q_trafo_flow"])  
+        results["P_node"].append([-p for p in flow_results["P_node"]])  # Reverse direction
+        results["Q_node"].append([-q for q in flow_results["Q_node"]])  # Reverse direction
+        results["line_pl_mw"].append([-p for p in flow_results["P_line_flow"]])  # Reverse direction
+        results["line_ql_mvar"].append([-q for q in flow_results["Q_line_flow"]])  # Reverse direction
+        results["trafo_pl_mw"].append([-p for p in flow_results["P_trafo_flow"]])  # Reverse direction
+        results["trafo_ql_mvar"].append([-q for q in flow_results["Q_trafo_flow"]])  # Reverse direction
+        results["S_trafo"].append(flow_results["S_trafo"])
+        results["Trafo_loading_percent"].append(flow_results["Trafo_loading_percent"])
         results["load_p_mw"].append(net.load.p_mw.values.tolist())
         results["sgen_p_mw"].append(net.sgen.p_mw.values.tolist())
 
     # Convert results into DataFrames
     V_magnitude_df = pd.DataFrame(results["V_magnitude"], index=results["time_step"], columns=net.bus.index)
+
     P_node_df = pd.DataFrame(results["P_node"], index=results["time_step"], columns=net.bus.index)
     Q_node_df = pd.DataFrame(results["Q_node"], index=results["time_step"], columns=net.bus.index)
+
     load_p_mw_df = pd.DataFrame(results["load_p_mw"], index=results["time_step"], columns=net.load.index)
     sgen_p_mw_df = pd.DataFrame(results["sgen_p_mw"], index=results["time_step"], columns=net.sgen.index)
 
@@ -480,11 +542,13 @@ def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const
     line_ql_mvar_df = pd.DataFrame(results["line_ql_mvar"], index=results["time_step"], columns=line_indices)
     trafo_pl_mw_df = pd.DataFrame(results["trafo_pl_mw"], index=results["time_step"], columns=trafo_indices)
     trafo_ql_mvar_df = pd.DataFrame(results["trafo_ql_mvar"], index=results["time_step"], columns=trafo_indices)
+    
+    S_trafo_df = pd.DataFrame(results["S_trafo"], index=results["time_step"], columns=trafo_indices)
+    Trafo_loading_df = pd.DataFrame(results["Trafo_loading_percent"], index=results["time_step"], columns=trafo_indices)
 
-    # Store I_branch only for lines
     I_branch_df = pd.DataFrame(results["I_branch"], index=results["time_step"], columns=line_indices)
 
-    # Create final results DataFrame
+    # Combine all DataFrames
     results_df = pd.concat({
         "V_magnitude": V_magnitude_df,
         "P_node": P_node_df,
@@ -495,7 +559,9 @@ def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const
         "line_ql_mvar": line_ql_mvar_df,
         "trafo_pl_mw": trafo_pl_mw_df,
         "trafo_ql_mvar": trafo_ql_mvar_df,
-        "I_branch": I_branch_df  # Include I_branch in results
+        "S_trafo": S_trafo_df,
+        "Trafo_loading_percent": Trafo_loading_df,
+        "I_branch": I_branch_df
     }, axis=1)
 
     return results_df

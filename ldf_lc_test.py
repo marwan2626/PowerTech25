@@ -23,8 +23,9 @@ Bbus = ldf.calculate_bbus_matrix(net)
 
 results = ldf.manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const_load_household_Q, const_load_heatpump, Gbus, Bbus)
 
-pl.plot_voltage_magnitude(results)
-pl.plot_line_power_flow(results)
-pl.plot_load_power(results)
-pl.plot_branch_current(results)
+#pl.plot_voltage_magnitude(results)
+#pl.plot_line_power_flow(results)
+#pl.plot_load_power(results)
+#pl.plot_branch_current(results)
 #pl.plot_ldf_lc_results(results)
+pl.plot_ldf_results_plotly(results)

@@ -40,17 +40,30 @@ else:
 #time_steps = df_pv.index
 #print(f"Time steps: {time_steps}")
 # Create the output writer
+from pandapower.timeseries import OutputWriter
+
 def create_output_writer(net, time_steps, output_dir):
     ow = OutputWriter(net, time_steps, output_path=output_dir, output_file_type=".xlsx", log_variables=list())
-    # Log these variables during the time series loop
-    ow.log_variable('res_load', 'p_mw')
-    ow.log_variable('res_bus', 'vm_pu')
-    ow.log_variable('res_bus', 'va_degree')  # Log voltage angle in degrees
-    ow.log_variable('res_bus', 'p_mw')  # Log bus active power
-    ow.log_variable('res_line', 'loading_percent')
-    ow.log_variable('res_line', 'i_ka')
-    ow.log_variable('res_trafo', 'loading_percent')  # Log transformer loading percent
+
+    # Bus Variables
+    ow.log_variable('res_bus', 'vm_pu')  # Voltage Magnitude
+    ow.log_variable('res_bus', 'p_mw')   # Active Power (P)
+    ow.log_variable('res_bus', 'q_mvar') # Reactive Power (Q)
+    ow.log_variable('res_bus', 'va_degree')  # Voltage Angle
+
+    # Load Variables
+    ow.log_variable('res_load', 'p_mw')  # Load Power
+
+    # Line Variables
+    ow.log_variable('res_line', 'p_from_mw')  # Line Active Power
+    ow.log_variable('res_line', 'q_from_mvar')  # Line Reactive Power
+    ow.log_variable('res_line', 'i_ka')  # Line Current
+
+    # Transformer Variables
+    ow.log_variable('res_trafo', 'loading_percent')  # Transformer Loading
+
     return ow
+
 
 output_dir = "output"
 
@@ -66,107 +79,66 @@ def run_dc_power_flow(net, **kwargs):
 ow = create_output_writer(net, time_steps, output_dir=output_dir)
 run_timeseries(net, time_steps=time_steps, run=run_dc_power_flow)
 
-# Extract the Ybus matrix
-#Ybus = net._ppc["internal"]["Ybus"]
-
-# Print the shape of Ybus to verify
-#print(f"\n===== Ybus Matrix Shape: {Ybus.shape} =====\n")
-
-
-# Convert Ybus to a Pandas DataFrame for better readability
-#Ybus_df = pd.DataFrame(Ybus.toarray(), index=net.bus.index, columns=net.bus.index)
-
-# # Print the full Ybus matrix
-# print("\n===== Ybus Matrix =====\n")
-# #print(Ybus_df)
-
-
-# print("==== Pandapower Internal PPC Data ====")
-# print(net._ppc)
-
-# # Print the Pandapower Ybus matrix directly
-# print("==== Pandapower Ybus Matrix ====")
-# print(net._ppc["internal"]["Ybus"])
-
-# # Extract the specific transformer admittance from Ybus
-# hv_bus, lv_bus = net.trafo.iloc[0][["hv_bus", "lv_bus"]]
-
-# # Get admittance values
-# y_hv_lv = net._ppc["internal"]["Ybus"][hv_bus, lv_bus]  # Off-diagonal (mutual admittance)
-# y_lv_hv = net._ppc["internal"]["Ybus"][lv_bus, hv_bus]  # Off-diagonal (should be same as y_hv_lv)
-# y_hv_hv = net._ppc["internal"]["Ybus"][hv_bus, hv_bus]  # Self-admittance of HV side
-# y_lv_lv = net._ppc["internal"]["Ybus"][lv_bus, lv_bus]  # Self-admittance of LV side
-
-# print(f"Ybus({hv_bus}, {lv_bus}): {y_hv_lv}")
-# print(f"Ybus({lv_bus}, {hv_bus}): {y_lv_hv}")
-# print(f"Ybus({hv_bus}, {hv_bus}): {y_hv_hv}")
-# print(f"Ybus({lv_bus}, {lv_bus}): {y_lv_lv}")
-
-
 # Plot and print results
 import matplotlib.pyplot as plt
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
 
-# Voltage results
-vm_pu_file = os.path.join(output_dir, "res_bus", "vm_pu.xlsx")
-vm_pu = pd.read_excel(vm_pu_file, index_col=0)
-vm_pu.plot(label="vm_pu")
-plt.xlabel("time step")
-plt.ylabel("voltage mag. [p.u.]")
-plt.title("Voltage Magnitude")
-plt.grid()
-plt.show()
+output_dir = "output"
 
-# Voltage results
-bus_pmw_file = os.path.join(output_dir, "res_bus", "p_mw.xlsx")
-bus_p_mw = pd.read_excel(bus_pmw_file, index_col=0)
-bus_p_mw.plot(label="p_mw")
-plt.xlabel("time step")
-plt.ylabel("power [MW]")
-plt.title("Power")
-plt.grid()
-plt.show()
+def plot_results():
+    # Helper function to read and plot data
+    def plot_file(file_path, ylabel, title, label=None):
+        if os.path.exists(file_path):
+            df = pd.read_excel(file_path, index_col=0)
+            if not df.empty:
+                df.plot()
+                plt.xlabel("Time Step")
+                plt.ylabel(ylabel)
+                plt.title(title)
+                plt.grid()
+                plt.show()
+            else:
+                print(f"Info: {title} data is empty. Skipping plot.")
+        else:
+            print(f"Warning: {file_path} not found. Skipping {title}.")
 
-# Voltage angle results
-va_degree_file = os.path.join(output_dir, "res_bus", "va_degree.xlsx")
-va_degree = pd.read_excel(va_degree_file, index_col=0)
-va_degree.plot(label="va_degree")
-plt.xlabel("time step")
-plt.ylabel("voltage degree")
-plt.title("Voltage Angle")
-plt.grid()
-plt.show()
-#print(va_degree)
+    # 1️⃣ Voltage Magnitude
+    plot_file(os.path.join(output_dir, "res_bus", "vm_pu.xlsx"), 
+              "Voltage Magnitude [p.u.]", "Voltage Magnitude")
 
-# Current results
-i_ka_file = os.path.join(output_dir, "res_line", "i_ka.xlsx")
-i_ka = pd.read_excel(i_ka_file, index_col=0)
-i_ka.plot(label="i_ka")
-plt.xlabel("time step")
-plt.ylabel("current magnitude [kA]")
-plt.title("Current Magnitude")
-plt.grid()
-plt.show()
+    # 2️⃣ P Node (Bus Active Power)
+    plot_file(os.path.join(output_dir, "res_bus", "p_mw.xlsx"), 
+              "Bus Power [MW]", "Bus Active Power (P)")
 
-# load results
-load_file = os.path.join(output_dir, "res_load", "p_mw.xlsx")
-load_p_mw = pd.read_excel(load_file, index_col=0)
-load_p_mw.plot(label="p_mw")
-plt.xlabel("time step")
-plt.ylabel("p_mw")
-plt.title("load power")
-plt.grid()
-plt.show()
-#print(load_p_mw)
+    # 3️⃣ Q Node (Bus Reactive Power)
+    plot_file(os.path.join(output_dir, "res_bus", "q_mvar.xlsx"), 
+              "Bus Reactive Power [MVar]", "Bus Reactive Power (Q)")
 
-# Print Bbus matrix for debugging
-print(net._ppc['internal']['Bbus'].A)
+    # 4️⃣ Load Power
+    plot_file(os.path.join(output_dir, "res_load", "p_mw.xlsx"), 
+              "Load Power [MW]", "Load Power")
 
-# Transformer loading results
-trafo_loading_file = os.path.join(output_dir, "res_trafo", "loading_percent.xlsx")
-trafo_loading = pd.read_excel(trafo_loading_file, index_col=0)
-trafo_loading.plot()
-plt.xlabel("time step")
-plt.ylabel("Transformer Loading [%]")
-plt.title("Transformer Loading")
-plt.grid()
-plt.show()
+    # 5️⃣ Line Power (Active)
+    plot_file(os.path.join(output_dir, "res_line", "p_from_mw.xlsx"), 
+              "Line Power [MW]", "Line Active Power (P)")
+    
+    # 6️⃣ Line Reactive Power
+    plot_file(os.path.join(output_dir, "res_line", "q_from_mvar.xlsx"), 
+              "Line Reactive Power [MVar]", "Line Reactive Power (Q)")
+
+    # 7️⃣ Transformer Loading
+    plot_file(os.path.join(output_dir, "res_trafo", "loading_percent.xlsx"), 
+              "Transformer Loading [%]", "Transformer Loading")
+
+    # 8️⃣ Line Current
+    plot_file(os.path.join(output_dir, "res_line", "i_ka.xlsx"), 
+              "Current Magnitude [kA]", "Line Current")
+
+    # Debugging Bbus matrix
+    print("Bbus Matrix:")
+    print(net._ppc['internal']['Bbus'].A)
+
+# Call the function
+plot_results()

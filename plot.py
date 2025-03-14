@@ -998,3 +998,69 @@ def plot_branch_current(results_df):
     plt.legend(loc="best", fontsize=8)
     plt.grid(True)
     plt.show()
+
+
+
+import plotly.graph_objects as go
+import pandas as pd
+
+def plot_ldf_results_plotly(results_df):
+    """
+    Generates interactive Plotly plots for each variable in results_df.
+    If a variable is empty, it will display an empty plot instead of crashing.
+
+    Parameters:
+    - results_df: Multi-index DataFrame where the first level is variable names (e.g., 'V_magnitude'),
+      and the second level is the bus or line indices.
+    """
+    idx = pd.IndexSlice  # IndexSlice for handling MultiIndex columns
+
+    # Get the list of top-level categories (e.g., 'V_magnitude', 'P_node', etc.)
+    categories = results_df.columns.get_level_values(0).unique()
+    
+    for category in categories:
+        # Extract the sub-DataFrame correctly
+        try:
+            sub_df = results_df.loc[:, idx[category, :]]
+        except KeyError:
+            print(f"Warning: Category '{category}' not found in results_df. Skipping.")
+            continue
+
+        # Check if sub_df is empty
+        if sub_df.empty or sub_df.isna().all().all():
+            print(f"Info: '{category}' is empty. Displaying an empty plot.")
+            fig = go.Figure()
+            fig.update_layout(
+                title=f"{category} (No Data Available)",
+                xaxis_title="Time Step",
+                yaxis_title=category,
+                annotations=[dict(
+                    text="No data available",
+                    xref="paper", yref="paper",
+                    showarrow=False,
+                    font=dict(size=16)
+                )]
+            )
+            fig.show()
+            continue
+
+        # Create plot
+        fig = go.Figure()
+        for column in sub_df.columns:
+            fig.add_trace(go.Scatter(
+                x=sub_df.index, 
+                y=sub_df[column], 
+                mode='lines', 
+                name=f"{category} - {column[1]}"  # Use second level of column MultiIndex
+            ))
+
+        # Customize layout
+        fig.update_layout(
+            title=f'{category} Over Time',
+            xaxis_title='Time Step',
+            yaxis_title=category,
+            hovermode="x unified"
+        )
+
+        # Show plot
+        fig.show()
