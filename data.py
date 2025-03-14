@@ -59,8 +59,14 @@ def run_dc_load_flow(Bbus, net, P_mw):
         from_bus = line.from_bus
         to_bus = line.to_bus
         base_voltage = net.bus.at[from_bus, 'vn_kv'] * 1e3  # Convert kV to V
-        x_pu = line.x_ohm_per_km * line.length_km / ((base_voltage ** 2) / net.sn_mva)
+        Z_base = base_voltage ** 2 / net.sn_mva  # Calculate base impedance
+        Y_base = 1 / Z_base  # Calculate base admittance
+        x_pu = line.x_ohm_per_km * line.length_km / Z_base
+        r_pu = line.r_ohm_per_km * line.length_km / Z_base
         
+        Y_series = 1 / (r_pu + 1j * x_pu)  # Series admittance
+        print(f"Y_series: {Y_series}")
+
         # Calculate power flow in per unit
         power_flow_pu = (theta_full[from_bus] - theta_full[to_bus]) / x_pu
         # Convert to MW

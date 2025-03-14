@@ -108,7 +108,7 @@ def run_dc_load_flow(Bbus, net, P_mw):
     
     return results
 
-def manual_dc_timeseries(time_steps, net, const_pv, const_load, Ybus):
+def manual_dc_timeseries(time_steps, net, const_pv, const_load, Bbus):
     results = {
         "time_step": [],
         "theta_degrees": [],
@@ -140,7 +140,7 @@ def manual_dc_timeseries(time_steps, net, const_pv, const_load, Ybus):
         #print(f"Power Injection Vector (P): {P}")
 
         # Run the DC load flow calculation
-        flow_results = run_dc_load_flow(Ybus, net, P)
+        flow_results = run_dc_load_flow(Bbus, net, P)
 
         if line_indices is None:
             line_indices = flow_results['line_pl_mw'].index
@@ -169,7 +169,7 @@ def manual_dc_timeseries(time_steps, net, const_pv, const_load, Ybus):
         "line_pl_mw": line_pl_mw_df
     }, axis=1)
 
-    results_df.to_excel("output_results.xlsx")
+    #results_df.to_excel("output_results.xlsx")
     
     return results_df
 

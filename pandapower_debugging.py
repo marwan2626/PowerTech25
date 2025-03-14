@@ -18,9 +18,11 @@ import os
 import pandapower as pp
 
 # Set up the grid and time series data
-net, const_load_household, const_load_heatpump, time_steps, df_household, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb = gd.setup_grid_powertech25(season='winter')
-net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)
-print(f"Type of net.controller: {type(net.controller)}")
+net, const_load_household_P, const_load_household_Q, const_load_heatpump, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb = gd.setup_grid_IAS(season='winter')
+#pp.runpp(net)
+
+#net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)
+""" print(f"Type of net.controller: {type(net.controller)}")
 print("Contents of net.controller:")
 print(net.controller)
 # Print details of each ConstController
@@ -33,10 +35,10 @@ if hasattr(net, 'controller') and not net.controller.empty:
         print(f"  Element Index: {controller.element_index}")
         print(f"  Profile Name: {controller.profile_name}")
 else:
-    print("No controllers found in the net.")
+    print("No controllers found in the net.") """
 #net, df_pv, df, pv_generators, const_load, const_pv = gd.setup_grid()
 #time_steps = df_pv.index
-print(f"Time steps: {time_steps}")
+#print(f"Time steps: {time_steps}")
 # Create the output writer
 def create_output_writer(net, time_steps, output_dir):
     ow = OutputWriter(net, time_steps, output_path=output_dir, output_file_type=".xlsx", log_variables=list())
@@ -54,15 +56,52 @@ output_dir = "output"
 
 # Define the function to run DC power flow
 def run_dc_power_flow(net, **kwargs):
-    print(f"Loads at each bus: {net.load.p_mw.values.tolist()}")
-    print(f"Generation at each bus: {net.sgen.p_mw.values.tolist()}")
+    #print(f"Loads at each bus: {net.load.p_mw.values.tolist()}")
+    #print(f"Generation at each bus: {net.sgen.p_mw.values.tolist()}")
     
     # Run the DC power flow
-    pp.rundcpp(net)
+    pp.runpp(net)
 
 # Create output writer and run the time series
 ow = create_output_writer(net, time_steps, output_dir=output_dir)
 run_timeseries(net, time_steps=time_steps, run=run_dc_power_flow)
+
+# Extract the Ybus matrix
+#Ybus = net._ppc["internal"]["Ybus"]
+
+# Print the shape of Ybus to verify
+#print(f"\n===== Ybus Matrix Shape: {Ybus.shape} =====\n")
+
+
+# Convert Ybus to a Pandas DataFrame for better readability
+#Ybus_df = pd.DataFrame(Ybus.toarray(), index=net.bus.index, columns=net.bus.index)
+
+# # Print the full Ybus matrix
+# print("\n===== Ybus Matrix =====\n")
+# #print(Ybus_df)
+
+
+# print("==== Pandapower Internal PPC Data ====")
+# print(net._ppc)
+
+# # Print the Pandapower Ybus matrix directly
+# print("==== Pandapower Ybus Matrix ====")
+# print(net._ppc["internal"]["Ybus"])
+
+# # Extract the specific transformer admittance from Ybus
+# hv_bus, lv_bus = net.trafo.iloc[0][["hv_bus", "lv_bus"]]
+
+# # Get admittance values
+# y_hv_lv = net._ppc["internal"]["Ybus"][hv_bus, lv_bus]  # Off-diagonal (mutual admittance)
+# y_lv_hv = net._ppc["internal"]["Ybus"][lv_bus, hv_bus]  # Off-diagonal (should be same as y_hv_lv)
+# y_hv_hv = net._ppc["internal"]["Ybus"][hv_bus, hv_bus]  # Self-admittance of HV side
+# y_lv_lv = net._ppc["internal"]["Ybus"][lv_bus, lv_bus]  # Self-admittance of LV side
+
+# print(f"Ybus({hv_bus}, {lv_bus}): {y_hv_lv}")
+# print(f"Ybus({lv_bus}, {hv_bus}): {y_lv_hv}")
+# print(f"Ybus({hv_bus}, {hv_bus}): {y_hv_hv}")
+# print(f"Ybus({lv_bus}, {lv_bus}): {y_lv_lv}")
+
 
 # Plot and print results
 import matplotlib.pyplot as plt

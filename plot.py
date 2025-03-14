@@ -691,3 +691,310 @@ def box_line_loading_two_subplots(mc_line_results_df1, mc_line_results_df2):
 
     # Show the plot
     plt.show()
+import plotly.graph_objects as go
+import pandas as pd
+
+def plot_ldf_lc_results(results):
+    """Plot LDF-LC power flow results indexed by bus or line using Plotly."""
+    
+    # Ensure results is a DataFrame and set index correctly
+    if isinstance(results, pd.Series):
+        results = results.to_frame()
+
+    if 'time_step' in results.columns:
+        results = results.set_index('time_step')
+
+    # Check data type of results['voltage_pu']
+    voltage_data = results['voltage_pu']
+    if isinstance(voltage_data, pd.Series):
+        voltage_data = voltage_data.to_frame()
+
+    # --- PLOT VOLTAGES (Indexed by Bus) ---
+    fig_volt = go.Figure()
+    for bus in voltage_data.columns:
+        fig_volt.add_trace(go.Scatter(
+            x=results.index,
+            y=voltage_data[bus],
+            mode='lines+markers',
+            name=f"Bus {bus}",
+            hoverinfo='x+y'
+        ))
+
+    fig_volt.update_layout(
+        title="Bus Voltage Magnitudes (p.u.)",
+        xaxis_title="Time Step",
+        yaxis_title="Voltage (p.u.)",
+        hovermode="x",
+        template="plotly_dark"
+    )
+    fig_volt.show()
+
+    # --- PLOT NODE ACTIVE POWER INJECTION (Indexed by Bus) ---
+    if 'node_p_mw' in results.columns:
+        node_p_data = results['node_p_mw']
+        if isinstance(node_p_data, pd.Series):
+            node_p_data = node_p_data.to_frame()
+
+        fig_node_p = go.Figure()
+        for bus in node_p_data.columns:
+            fig_node_p.add_trace(go.Scatter(
+                x=results.index,
+                y=node_p_data[bus],
+                mode='lines+markers',
+                name=f"Bus {bus}",
+                hoverinfo='x+y'
+            ))
+
+        fig_node_p.update_layout(
+            title="Node Active Power Injection (MW)",
+            xaxis_title="Time Step",
+            yaxis_title="Power (MW)",
+            hovermode="x",
+            template="plotly_dark"
+        )
+        fig_node_p.show()
+
+    # --- PLOT NODE REACTIVE POWER INJECTION (Indexed by Bus) ---
+    if 'node_q_mvar' in results.columns:
+        node_q_data = results['node_q_mvar']
+        if isinstance(node_q_data, pd.Series):
+            node_q_data = node_q_data.to_frame()
+
+        fig_node_q = go.Figure()
+        for bus in node_q_data.columns:
+            fig_node_q.add_trace(go.Scatter(
+                x=results.index,
+                y=node_q_data[bus],
+                mode='lines+markers',
+                name=f"Bus {bus}",
+                hoverinfo='x+y'
+            ))
+
+        fig_node_q.update_layout(
+            title="Node Reactive Power Injection (MVar)",
+            xaxis_title="Time Step",
+            yaxis_title="Power (MVar)",
+            hovermode="x",
+            template="plotly_dark"
+        )
+        fig_node_q.show()
+
+    # --- PLOT ACTIVE POWER FLOWS (Indexed by Line) ---
+    if 'line_pl_mw' in results.columns:
+        power_flow_data = results['line_pl_mw']
+        if isinstance(power_flow_data, pd.Series):
+            power_flow_data = power_flow_data.to_frame()
+
+        fig_pl = go.Figure()
+        for line in power_flow_data.columns:
+            fig_pl.add_trace(go.Scatter(
+                x=results.index,
+                y=power_flow_data[line],
+                mode='lines+markers',
+                name=f"Line {line}",
+                hoverinfo='x+y'
+            ))
+
+        fig_pl.update_layout(
+            title="Active Power Flow (MW) Per Line",
+            xaxis_title="Time Step",
+            yaxis_title="Power (MW)",
+            hovermode="x",
+            template="plotly_dark"
+        )
+        fig_pl.show()
+
+    # --- PLOT REACTIVE POWER FLOWS (Indexed by Line) ---
+    if 'line_ql_mw' in results.columns:
+        reactive_flow_data = results['line_ql_mw']
+        if isinstance(reactive_flow_data, pd.Series):
+            reactive_flow_data = reactive_flow_data.to_frame()
+
+        fig_ql = go.Figure()
+        for line in reactive_flow_data.columns:
+            fig_ql.add_trace(go.Scatter(
+                x=results.index,
+                y=reactive_flow_data[line],
+                mode='lines+markers',
+                name=f"Line {line}",
+                hoverinfo='x+y'
+            ))
+
+        fig_ql.update_layout(
+            title="Reactive Power Flow (MVar) Per Line",
+            xaxis_title="Time Step",
+            yaxis_title="Reactive Power (MVar)",
+            hovermode="x",
+            template="plotly_dark"
+        )
+        fig_ql.show()
+
+    # --- PLOT ACTIVE POWER LOSSES (Indexed by Line) ---
+    if 'line_losses_p_mw' in results.columns:
+        loss_p_data = results['line_losses_p_mw']
+        if isinstance(loss_p_data, pd.Series):
+            loss_p_data = loss_p_data.to_frame()
+
+        fig_loss_p = go.Figure()
+        for line in loss_p_data.columns:
+            fig_loss_p.add_trace(go.Scatter(
+                x=results.index,
+                y=loss_p_data[line],
+                mode='lines+markers',
+                name=f"Line {line}",
+                hoverinfo='x+y'
+            ))
+
+        fig_loss_p.update_layout(
+            title="Active Power Losses (MW) Per Line",
+            xaxis_title="Time Step",
+            yaxis_title="Losses (MW)",
+            hovermode="x",
+            template="plotly_dark"
+        )
+        fig_loss_p.show()
+
+    # --- PLOT REACTIVE POWER LOSSES (Indexed by Line) ---
+    if 'line_losses_q_mw' in results.columns:
+        loss_q_data = results['line_losses_q_mw']
+        if isinstance(loss_q_data, pd.Series):
+            loss_q_data = loss_q_data.to_frame()
+
+        fig_loss_q = go.Figure()
+        for line in loss_q_data.columns:
+            fig_loss_q.add_trace(go.Scatter(
+                x=results.index,
+                y=loss_q_data[line],
+                mode='lines+markers',
+                name=f"Line {line}",
+                hoverinfo='x+y'
+            ))
+
+        fig_loss_q.update_layout(
+            title="Reactive Power Losses (MVar) Per Line",
+            xaxis_title="Time Step",
+            yaxis_title="Losses (MVar)",
+            hovermode="x",
+            template="plotly_dark"
+        )
+        fig_loss_q.show()
+
+    # --- PLOT LINE CURRENT MAGNITUDE (Indexed by Line) ---
+    if 'line_current_ka' in results.columns:
+        current_data = results['line_current_ka']
+        if isinstance(current_data, pd.Series):
+            current_data = current_data.to_frame()
+
+        fig_current = go.Figure()
+        for line in current_data.columns:
+            fig_current.add_trace(go.Scatter(
+                x=results.index,
+                y=current_data[line],
+                mode='lines+markers',
+                name=f"Line {line}",
+                hoverinfo='x+y'
+            ))
+
+        fig_current.update_layout(
+            title="Line Current Magnitude (kA)",
+            xaxis_title="Time Step",
+            yaxis_title="Current (kA)",
+            hovermode="x",
+            template="plotly_dark"
+        )
+        fig_current.show()
+
+def plot_voltage_magnitude(results_df):
+    """
+    Plots voltage magnitude (V_magnitude) over time for each bus.
+
+    Parameters:
+    - results_df: DataFrame containing V_magnitude results with buses as columns and timesteps as rows.
+    """
+    # Extract voltage magnitude data
+    V_magnitude_df = results_df["V_magnitude"]
+
+    # Plot each bus voltage over time
+    plt.figure(figsize=(10, 6))
+    
+    for bus in V_magnitude_df.columns:
+        plt.plot(V_magnitude_df.index, V_magnitude_df[bus], label=f"Bus {bus}")
+
+    plt.xlabel("Time Step")
+    plt.ylabel("Voltage Magnitude (p.u.)")
+    plt.title("Voltage Magnitude Over Time")
+    plt.legend(loc="best", fontsize=8)
+    plt.grid(True)
+    plt.show()
+
+import matplotlib.pyplot as plt
+
+def plot_line_power_flow(results_df):
+    """
+    Plots line active power flow (line_pl_mw) over time for each power line.
+
+    Parameters:
+    - results_df: DataFrame containing line_pl_mw results with lines as columns and timesteps as rows.
+    """
+    # Extract line power flow data
+    line_pl_mw_df = results_df["line_pl_mw"]
+
+    # Plot each line power flow over time
+    plt.figure(figsize=(10, 6))
+    
+    for line in line_pl_mw_df.columns:
+        plt.plot(line_pl_mw_df.index, line_pl_mw_df[line], label=f"Line {line}")
+
+    plt.xlabel("Time Step")
+    plt.ylabel("Line Active Power Flow (MW)")
+    plt.title("Line Active Power Flow Over Time")
+    plt.legend(loc="best", fontsize=8)
+    plt.grid(True)
+    plt.show()
+
+def plot_load_power(results_df):
+    """
+    Plots load active power (load_p_mw) over time for each load bus.
+
+    Parameters:
+    - results_df: DataFrame containing load_p_mw results with load indices as columns and timesteps as rows.
+    """
+    # Extract load power data
+    load_p_mw_df = results_df["P_node"]
+
+    # Plot each load power over time
+    plt.figure(figsize=(10, 6))
+    
+    for load in load_p_mw_df.columns:
+        plt.plot(load_p_mw_df.index, load_p_mw_df[load], label=f"Load {load}")
+
+    plt.xlabel("Time Step")
+    plt.ylabel("Load Active Power (MW)")
+    plt.title("Load Active Power Over Time")
+    plt.legend(loc="best", fontsize=8)
+    plt.grid(True)
+    plt.show()
+
+
+def plot_branch_current(results_df):
+    """
+    Plots branch currents (I_branch) over time for each power line and transformer.
+
+    Parameters:
+    - results_df: DataFrame containing I_branch results with branches (lines and transformers) as columns and timesteps as rows.
+    """
+    # Extract branch current data
+    I_branch_df = results_df["I_branch"]
+
+    # Plot each branch current over time
+    plt.figure(figsize=(10, 6))
+    
+    for branch in I_branch_df.columns:
+        plt.plot(I_branch_df.index, I_branch_df[branch], label=f"Branch {branch}")
+
+    plt.xlabel("Time Step")
+    plt.ylabel("Branch Current (p.u. or A)")
+    plt.title("Branch Current Over Time")
+    plt.legend(loc="best", fontsize=8)
+    plt.grid(True)
+    plt.show()
