@@ -464,7 +464,7 @@ def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
     return results
 
 
-def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const_load_household_Q, const_load_heatpump, Gbus, Bbus):
+def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q, const_pv, Gbus, Bbus):
     results = {
         "time_step": [],
         "V_magnitude": [],
@@ -489,6 +489,9 @@ def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const
         const_load_household_P.time_step(net, time=t)
         const_load_household_Q.time_step(net, time=t)
         const_load_heatpump.time_step(net, time=t)
+        const_load_heatpump_Q.time_step(net, time=t)
+        # Update PV generation
+        const_pv.time_step(net, time=t)
 
         # Compute power injections
         P = np.zeros(len(net.bus), dtype=np.float64)

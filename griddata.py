@@ -531,11 +531,11 @@ def setup_grid_IAS(season):
     ############################################################################################################
     # Load the normalized household profile
     df_household_prognosis = pd.read_csv("householdPrognosis1h.csv", sep=';')
-    df_season_household_prognosis = df_household_prognosis[df_household_prognosis['season'] == season]
+    df_season_household_prognosis = df_household_prognosis[df_household_prognosis['season'] == season].reset_index(drop=True)
     #df_season_household_prognosis['meanP'] = df_season_household_prognosis['meanP'].str.replace(",", ".").astype(float)
     df_season_household_prognosis[['meanP', 'meanQ']] = df_season_household_prognosis[['meanP', 'meanQ']].astype(float)
-    df_season_household_prognosis['P_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanP'] / df_season_household_prognosis['meanP'].max()
-    df_season_household_prognosis['Q_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanQ'] / df_season_household_prognosis['meanQ'].max()
+    df_season_household_prognosis['P_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanP'] / df_household_prognosis['meanP'].max()
+    df_season_household_prognosis['Q_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanQ'] / df_household_prognosis['meanQ'].max()
     time_steps = df_season_household_prognosis.index
 
 
@@ -585,6 +585,71 @@ def setup_grid_IAS(season):
     net.load.loc[22, 'p_mw'] = 0
     net.load.loc[22, 'q_mw'] = 0
     ############################################################################################################
+    # Add PV Generation
+    ############################################################################################################
+    # Load PV Prognosis Data
+    df_pv_prognosis = pd.read_csv("pvPrognosis1h.csv", sep=';')
+
+    
+    # Define PV Capacity Categories
+    pv_capacity_mapping = {
+        (0, 0.003): 4,  # 15 kWp
+        (0.003, 0.006): 6,  # 25 kWp
+        (0.006, 0.012): 10,  # 50 kWp
+        (0.012, float('inf')): 15  # 100 kWp
+    }
+
+    # Function to determine PV capacity
+    def get_pv_capacity(p_mw):
+        for (low, high), capacity in pv_capacity_mapping.items():
+            if low <= p_mw < high:
+                return capacity / 1000  # Convert kWp to MW
+        return 0
+    
+    # Add PV Generation at Household Load Nodes
+    pv_nodes = []
+    pv_indices = []
+    for load_idx, load_row in household_loads.iterrows():
+        bus = load_row['bus']
+        p_mw = load_row['p_mw']
+        pv_capacity = get_pv_capacity(p_mw)
+        
+        if pv_capacity > 0:
+            pv_idx = net.sgen.shape[0]  # Get new sgen index
+            net.sgen = net.sgen.append(pd.Series({
+                "bus": bus,
+                "p_mw": pv_capacity,
+                "q_mvar": 0,
+                "name": f"PV_{load_idx}",
+                "in_service": True,
+                "sn_mva": 1.0,  # Default value, adjust if needed
+                "scaling": 1.0  # Default scaling factor
+            }, name=net.sgen.shape[0]))            
+            pv_nodes.append(bus)
+            pv_indices.append(pv_idx)
+
+    # Scale PV Profiles
+    df_season_pv_prognosis = df_pv_prognosis[df_pv_prognosis['season'] == season].reset_index(drop=True)
+    df_season_pv_prognosis['P_PV_NORM'] = df_season_pv_prognosis['meanP'] / df_pv_prognosis['meanP'].max()
+    scaled_pv_profiles = pd.DataFrame(
+        df_season_pv_prognosis['P_PV_NORM'].values[:, None] * np.array([net.sgen.loc[i, 'p_mw'] for i in pv_indices]) / par.hh_scaling,
+        columns=pv_indices
+    )
+    # Convert to DFData
+    ds_scaled_pv_profiles = DFData(scaled_pv_profiles)
+
+    # Create PV Controller
+    const_pv = ConstControl(
+        net,
+        element="sgen",
+        variable="p_mw",
+        element_index=pv_indices,
+        profile_name=scaled_pv_profiles.columns.tolist(),
+        data_source=ds_scaled_pv_profiles
+    )
+
+
+    ############################################################################################################
     # Add Heat Pump
     ############################################################################################################
     # Locate the load at bus 29
@@ -611,7 +676,7 @@ def setup_grid_IAS(season):
 
     # Load the heatpump prognosis profile CSV and filter by season
     df_heatpump_prognosis = pd.read_csv("heatpumpPrognosis1h.csv", sep=';')
-    df_season_heatpump_prognosis = df_heatpump_prognosis[df_heatpump_prognosis['season'] == season]
+    df_season_heatpump_prognosis = df_heatpump_prognosis[df_heatpump_prognosis['season'] == season].reset_index(drop=True)
         
     # Process load profile for bus 1
     # df_season_heatpump_prognosis['meanP'] = df_season_heatpump_prognosis['meanP'].str.replace(",", ".").astype(float)
@@ -623,9 +688,12 @@ def setup_grid_IAS(season):
     df_season_heatpump_prognosis['meanQ'] = df_season_heatpump_prognosis['meanQ'].astype(float)
     df_season_heatpump_prognosis['stdQ'] = df_season_heatpump_prognosis['stdQ'].astype(float)
         
-    df_season_heatpump_prognosis['meanP_NORM'] = df_season_heatpump_prognosis['meanP'] / df_season_heatpump_prognosis['meanP'].max()
-    df_season_heatpump_prognosis['stdP_NORM'] = df_season_heatpump_prognosis['stdP'] / df_season_heatpump_prognosis['meanP'].max()
+    df_season_heatpump_prognosis['meanP_NORM'] = df_season_heatpump_prognosis['meanP'] / df_heatpump_prognosis['meanP'].max()
+    df_season_heatpump_prognosis['stdP_NORM'] = df_season_heatpump_prognosis['stdP'] / df_heatpump_prognosis['meanP'].max()
     df_season_heatpump_prognosis['p_mw'] = df_season_heatpump_prognosis['meanP_NORM']
+    df_season_heatpump_prognosis['meanQ_NORM'] = df_season_heatpump_prognosis['meanQ'] / df_heatpump_prognosis['meanQ'].max()
+    df_season_heatpump_prognosis['stdQ_NORM'] = df_season_heatpump_prognosis['stdQ'] / df_heatpump_prognosis['meanQ'].max()
+    df_season_heatpump_prognosis['q_mvar'] = df_season_heatpump_prognosis['meanQ_NORM']
 
 
     # Generate heatpump scaling factors DataFrame
@@ -640,9 +708,17 @@ def setup_grid_IAS(season):
         df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
         columns=heatpump_loads.index
     )
+    Q_scaling = 0.5337
+    print("Q_scaling",Q_scaling)
+
+    df_season_heatpump_prognosis_scaled_Q = pd.DataFrame(
+        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling * Q_scaling,
+        columns=heatpump_loads.index
+)
 
     # Convert to DFData for dynamic control
     ds_scaled_heatpump_profiles = DFData(df_season_heatpump_prognosis_scaled)
+    ds_scaled_heatpump_profiles_Q = DFData(df_season_heatpump_prognosis_scaled_Q)
 
     # Add a single ConstControl to update p_mw
     const_load_heatpump = ConstControl(
@@ -654,10 +730,19 @@ def setup_grid_IAS(season):
         data_source=ds_scaled_heatpump_profiles
     )
 
+    const_load_heatpump_Q = ConstControl(
+        net,
+        element="load",
+        variable="q_mvar",  # Update q_mvar
+        element_index=heatpump_loads.index,  # Apply to all heat pumps
+        profile_name=df_season_heatpump_prognosis_scaled_Q.columns.tolist(),  # Profile for each load
+        data_source=ds_scaled_heatpump_profiles_Q
+    )
+
     ############################################################################################################
     # Ambient Temperature
     ############################################################################################################
     T_amb =  pd.read_csv("temperatureWinter1h.csv")
     T_amb = T_amb['APPARENT_TEMPERATURE:TOTAL']+273.15
 
-    return net, const_load_household_P, const_load_household_Q, const_load_heatpump, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb
+    return net, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q, const_pv, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb
