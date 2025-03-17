@@ -54,9 +54,9 @@ def compute_incidence_matrix(net):
         A_bus[int(trafo.lv_bus), trafo_index] = -1   # Low-voltage side
 
     # Save for debugging
-    A_df = pd.DataFrame(A_bus, index=net.bus.index, columns=list(net.line.index) + list(net.trafo.index))
-    A_df.to_csv("fixed_incidence_matrix_A.csv")
-    print("Fixed incidence matrix saved as 'fixed_incidence_matrix_A.csv'.")
+    #A_df = pd.DataFrame(A_bus, index=net.bus.index, columns=list(net.line.index) + list(net.trafo.index))
+    #A_df.to_csv("fixed_incidence_matrix_A.csv")
+    #print("Fixed incidence matrix saved as 'fixed_incidence_matrix_A.csv'.")
 
     return A_bus
 
@@ -220,42 +220,13 @@ def compute_downstream_nodes(A, net):
 
     return downstream_map
 
-
-def compute_branch_power_flow(A, P_mw, Q_mw, downstream_map):
-    """Computes accumulated power flow at each branch by summing downstream node demands."""
-    num_branches = A.shape[1]
-    
-    P_branch = np.zeros(num_branches)
-    Q_branch = np.zeros(num_branches)
-
-    # Traverse buses in **reverse** order (bottom-up accumulation)
-    buses = list(downstream_map.keys())[::-1]  # Reverse hierarchy
-
-    # Create mapping from branches to their buses
-    for branch_idx in range(num_branches):
-        from_bus = np.where(A[:, branch_idx] == 1)[0][0]
-        to_bus = np.where(A[:, branch_idx] == -1)[0][0]
-
-        # Add direct node power demand
-        P_branch[branch_idx] += P_mw[to_bus]
-        Q_branch[branch_idx] += Q_mw[to_bus]
-
-        # Accumulate downstream power
-        for child_bus in downstream_map[to_bus]:
-            downstream_branch_idx = np.where((A[:, :] == -1) & (np.arange(A.shape[1]) == child_bus))[1]
-            if len(downstream_branch_idx) > 0:
-                P_branch[branch_idx] += P_branch[downstream_branch_idx[0]]
-                Q_branch[branch_idx] += Q_branch[downstream_branch_idx[0]]
-
-    return P_branch, Q_branch
-
 def compute_Ybus(Gbus, Bbus):
     """Computes the admittance matrix Ybus = Gbus + jBbus."""
     return Gbus + 1j * Bbus
 
 
 
-def accumulate_downstream_power(A, P_mw, Q_mw, net):
+def accumulate_downstream_power(A, P_mw, Q_mw, net, downstream_map):
     """Accumulates downstream power flows using the correct downstream node mapping."""
     num_buses = A.shape[0]
 
@@ -266,9 +237,6 @@ def accumulate_downstream_power(A, P_mw, Q_mw, net):
     # Identify slack bus
     slack_bus_index = net.ext_grid.bus.iloc[0]
 
-    # Get correct downstream mappings
-    downstream_map = compute_downstream_nodes(A, net)
-
     # Traverse each bus and accumulate power from its downstream buses
     for bus in range(num_buses):
         if bus == slack_bus_index:
@@ -278,53 +246,37 @@ def accumulate_downstream_power(A, P_mw, Q_mw, net):
             P_accumulated[bus] += P_mw[child_bus]
             Q_accumulated[bus] += Q_mw[child_bus]
 
-    # Compute power flow contributions for each branch
-    branch_to_buses = {idx: set() for idx in net.line.index.tolist() + net.trafo.index.tolist()}
+    # # Compute power flow contributions for each branch
+    # branch_to_buses = {idx: set() for idx in net.line.index.tolist() + net.trafo.index.tolist()}
     
-    for branch_idx in net.line.index:
-        from_bus = np.where(A[:, branch_idx] == 1)[0][0]
-        to_bus = np.where(A[:, branch_idx] == -1)[0][0]
-        branch_to_buses[branch_idx].update(downstream_map[to_bus])
-        branch_to_buses[branch_idx].add(to_bus)
+    # for branch_idx in net.line.index:
+    #     from_bus = np.where(A[:, branch_idx] == 1)[0][0]
+    #     to_bus = np.where(A[:, branch_idx] == -1)[0][0]
+    #     branch_to_buses[branch_idx].update(downstream_map[to_bus])
+    #     branch_to_buses[branch_idx].add(to_bus)
 
-    for trafo_idx in net.trafo.index:
-        from_bus = net.trafo.hv_bus.loc[trafo_idx]
-        to_bus = net.trafo.lv_bus.loc[trafo_idx]
+    # for trafo_idx in net.trafo.index:
+    #     from_bus = net.trafo.hv_bus.loc[trafo_idx]
+    #     to_bus = net.trafo.lv_bus.loc[trafo_idx]
         
-        # Ensure trafo_idx exists in branch_to_buses
-        if trafo_idx not in branch_to_buses:
-            branch_to_buses[trafo_idx] = set()
+    #     # Ensure trafo_idx exists in branch_to_buses
+    #     if trafo_idx not in branch_to_buses:
+    #         branch_to_buses[trafo_idx] = set()
 
-        branch_to_buses[trafo_idx].update(downstream_map[to_bus])
-        branch_to_buses[trafo_idx].add(to_bus)
-
-    # Print debug info
-    #print("\n--- Accumulated Power Contributions ---")
-    #for branch_idx, buses in branch_to_buses.items():
-    #    if branch_idx in net.line.index:
-    #        print(f"Line {branch_idx} accumulates power from buses {sorted(buses)}")
-    #    elif int(branch_idx) in net.trafo.index.tolist():
-    #        print(f"Transformer {branch_idx} handles power from buses {sorted(buses)}")
-
-    #print("\n--- Transformer Power Contributions ---")
-    #for trafo_idx in net.trafo.index:
-    #    if trafo_idx in branch_to_buses:
-    #        print(f"Transformer {trafo_idx} handles power from buses {sorted(branch_to_buses[trafo_idx])}")
-    #    else:
-    #        print(f"Transformer {trafo_idx} is missing from branch_to_buses!")
+    #     branch_to_buses[trafo_idx].update(downstream_map[to_bus])
+    #     branch_to_buses[trafo_idx].add(to_bus)
 
     return P_accumulated, Q_accumulated
 
 
-def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
+def run_lindistflow(net, downstream_map, P_mw, Q_mw, Ybus, A, Z):
     """Runs the LinDistFlow calculation with correct power accumulation, including transformers."""
 
     import numpy as np
     import pandas as pd
 
     # Convert power injections to per unit
-    S_pu = (P_mw + 1j * Q_mw) / net.sn_mva  
-    Ybus = compute_Ybus(Gbus, Bbus)
+    S_pu = (P_mw + 1j * Q_mw) / net.sn_mva 
 
     # Identify the slack bus
     slack_bus_index = net.ext_grid.bus.iloc[0]
@@ -347,17 +299,12 @@ def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
             V_nodes[i] = V_reduced[idx]
             idx += 1
 
-    # Compute incidence matrix
-    A = compute_incidence_matrix(net)
-
     # Compute accumulated power flows
-    P_accumulated, Q_accumulated = accumulate_downstream_power(A, P_mw, Q_mw, net)
+    P_accumulated, Q_accumulated = accumulate_downstream_power(A, P_mw, Q_mw, net, downstream_map)
 
     # === Compute P_branch and Q_branch for Lines and Transformers ===
     num_lines = len(net.line)
     num_trafo = len(net.trafo)
-
-    Z = calculate_z_matrix(net)
 
     P_branch = np.zeros(num_lines)
     Q_branch = np.zeros(num_lines)
@@ -411,11 +358,9 @@ def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
         trafo_z = Z[len(net.line) + trafo_idx]  # Transformer impedance is after lines in Z
         R_trafo = np.real(trafo_z)
         X_trafo = np.imag(trafo_z)
-        print(f"Trafo {trafo_idx} Z: {trafo_z}")
 
         # Estimated LV Voltage (Avoid divide-by-zero)
         V_LV = max(V_nodes[lv_bus], 1e-4) 
-        print(f"Trafo {trafo_idx} V_LV: {V_LV}") 
 
         # Compute Transformer Losses
         P_loss_trafo = R_trafo * (P_LV**2 + Q_LV**2) / V_LV**2
@@ -464,7 +409,7 @@ def run_lindistflow(Gbus, Bbus, net, P_mw, Q_mw):
     return results
 
 
-def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q, const_pv, Gbus, Bbus):
+def manual_lindistflow_timeseries(time_steps, net):
     results = {
         "time_step": [],
         "V_magnitude": [],
@@ -481,17 +426,33 @@ def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const
         "sgen_p_mw": []
     }
 
-    # Compute Z matrix once
     Z = calculate_z_matrix(net)
+    Gbus = calculate_gbus_matrix(net)
+    Bbus = calculate_bbus_matrix(net)
+    Ybus = compute_Ybus(Gbus, Bbus)
+    A = compute_incidence_matrix(net)
+    # Get correct downstream mappings
+    downstream_map = compute_downstream_nodes(A, net)
+
+    selected_elements = {"sgen", "load"}    # Retrieve all controllers from net
+    controllers = net.controller
+
 
     for t in time_steps:
+        #print(f"Processing time step {t}")
         # Update loads
-        const_load_household_P.time_step(net, time=t)
-        const_load_household_Q.time_step(net, time=t)
-        const_load_heatpump.time_step(net, time=t)
-        const_load_heatpump_Q.time_step(net, time=t)
+        #const_load_household_P.time_step(net, time=t)
+        #const_load_household_Q.time_step(net, time=t)
+        #const_load_heatpump.time_step(net, time=t)
+        #const_load_heatpump_Q.time_step(net, time=t)
         # Update PV generation
-        const_pv.time_step(net, time=t)
+        #const_pv.time_step(net, time=t)
+
+        # Apply all active controllers
+        if not controllers.empty:
+            for _, controller in controllers.iterrows():
+                if controller.object.element in selected_elements:  # Apply only selected elements
+                    controller.object.time_step(net, time=t)
 
         # Compute power injections
         P = np.zeros(len(net.bus), dtype=np.float64)
@@ -508,7 +469,7 @@ def manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const
                 Q[bus] += net.sgen.q_mvar.iloc[i]
 
         # Run LinDistFlow calculation with corrected Z matrix
-        flow_results = run_lindistflow(Gbus, Bbus, net, P, Q)
+        flow_results = run_lindistflow(net, downstream_map, P, Q, Ybus, A, Z)
 
         # Extract relevant results
         I_branch = flow_results["I_branch"]

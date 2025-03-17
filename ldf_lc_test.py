@@ -1,14 +1,11 @@
 import ldf_lc as ldf
 import griddata as gd
 import plot as pl
+import drcc_ldf as drcc
 
 import pandas as pd
 
-net, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q, const_pv, time_steps, df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb = gd.setup_grid_IAS(season='summer')
-
-Gbus = ldf.calculate_gbus_matrix(net)
-Bbus = ldf.calculate_bbus_matrix(net)
-
+net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, electricity_price = gd.setup_grid_IAS(season='summer')
 # Debugging Prints
 #print("\n===== DEBUGGING Gbus and Bbus =====")
 #print(f"Gbus Shape: {Gbus.shape}, Expected: ({len(net.bus)}, {len(net.bus)})")
@@ -21,7 +18,8 @@ Bbus = ldf.calculate_bbus_matrix(net)
 #print("\n===== Bbus Matrix =====")
 #print(pd.DataFrame(Bbus, index=net.bus.index, columns=net.bus.index))
 
-results = ldf.manual_lindistflow_timeseries(time_steps, net, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q, const_pv, Gbus, Bbus)
+#results = ldf.manual_lindistflow_timeseries(time_steps, net)
+results = drcc.solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, T_amb)
 
 #pl.plot_voltage_magnitude(results)
 #pl.plot_line_power_flow(results)

@@ -1,22 +1,121 @@
-\ Model opf_with_dc_load_flow_copy
+\ Model opf_with_ldf_lc_copy
 \ LP format - for model browsing. Use MPS format to capture full model detail.
 Minimize
  
 Subject To
- storage_energy_update_110_29: - 0.9 ts_in_110_29
-   + 1.111111111111111 ts_out_110_29
-   + 0.00735916666487853 energy_stored_110_29 = 0
- storage_energy_update_111_29: - 0.9926233333349228 energy_stored_110_29
-   - 0.9 ts_in_111_29 + 1.111111111111111 ts_out_111_29
-   + energy_stored_111_29 = 0
- sof_definition_111_29: 2.036338376932441 ts_sof_111_29
-   - energy_stored_111_29 = 0
- final_sof_balance_29: ts_sof_111_29 = 0.5
- storage_charging_110_29: ts_in_110_29 + [ ] <= 0
+ voltage_magnitude_8_4: - 0.0846886601625052 pv_gen_8[1]
+   - 0.0846886601625052 pv_gen_8[3] - 0.2090813828943805 pv_gen_8[4]
+   - 0.0846886601625056 pv_gen_8[5] - 0.1463984284125054 pv_gen_8[6]
+   - 0.0846886601625056 pv_gen_8[7] - 0.052442426662505 pv_gen_8[8]
+   - 0.1121053481625053 pv_gen_8[10] - 0.0846886601625052 pv_gen_8[11]
+   - 0.0846886601625052 pv_gen_8[12] - 0.1840932907068805 pv_gen_8[13]
+   - 0.0846886601625053 pv_gen_8[16] - 0.0846886601625055 pv_gen_8[17]
+   - 0.0846886601625056 pv_gen_8[20] - 0.0330327799125048 pv_gen_8[21]
+   - 0.0846886601625056 pv_gen_8[22] - 0.0846886601625053 pv_gen_8[23]
+   - 0.1806904751625054 pv_gen_8[24] - 0.0846886601625056 pv_gen_8[25]
+   - 0.0846886601625056 pv_gen_8[26] - 0.0846886601625055 pv_gen_8[27]
+   - 0.0846886601625056 pv_gen_8[28] - 0.03 pv_gen_8[29]
+   - 0.1815850637193805 pv_gen_8[30] - 0.0846886601625055 pv_gen_8[31]
+   - 0.0635610780375051 pv_gen_8[32] - 0.0846886601625055 pv_gen_8[33]
+   - 0.03 pv_gen_8[35] - 0.03 pv_gen_8[36] - 0.03 pv_gen_8[37]
+   - 0.03 pv_gen_8[39] - 0.03 pv_gen_8[40] - 0.03 pv_gen_8[41]
+   - 0.03 pv_gen_8[42] - 0.03 pv_gen_8[43] + 0.03 flexible_load_P_8[29]
+   + 0.1469693845669882 flexible_load_Q_8[29] + V_reduced[8,4]
+   = 1.001770899603594
+ voltage_magnitude_8_30: - 0.0846886601625052 pv_gen_8[1]
+   - 0.0846886601625052 pv_gen_8[3] - 0.1815850637193805 pv_gen_8[4]
+   - 0.0846886601625056 pv_gen_8[5] - 0.1463984284125054 pv_gen_8[6]
+   - 0.0846886601625056 pv_gen_8[7] - 0.052442426662505 pv_gen_8[8]
+   - 0.1121053481625053 pv_gen_8[10] - 0.0846886601625052 pv_gen_8[11]
+   - 0.0846886601625052 pv_gen_8[12] - 0.1815850637193805 pv_gen_8[13]
+   - 0.0846886601625053 pv_gen_8[16] - 0.0846886601625055 pv_gen_8[17]
+   - 0.0846886601625055 pv_gen_8[20] - 0.0330327799125048 pv_gen_8[21]
+   - 0.0846886601625056 pv_gen_8[22] - 0.0846886601625054 pv_gen_8[23]
+   - 0.1806904751625055 pv_gen_8[24] - 0.0846886601625055 pv_gen_8[25]
+   - 0.0846886601625055 pv_gen_8[26] - 0.0846886601625055 pv_gen_8[27]
+   - 0.0846886601625056 pv_gen_8[28] - 0.03 pv_gen_8[29]
+   - 0.1815850637193805 pv_gen_8[30] - 0.0846886601625055 pv_gen_8[31]
+   - 0.063561078037505 pv_gen_8[32] - 0.0846886601625055 pv_gen_8[33]
+   - 0.03 pv_gen_8[35] - 0.03 pv_gen_8[36] - 0.03 pv_gen_8[37]
+   - 0.03 pv_gen_8[39] - 0.03 pv_gen_8[40] - 0.03 pv_gen_8[41]
+   - 0.03 pv_gen_8[42] - 0.03 pv_gen_8[43] + 0.03 flexible_load_P_8[29]
+   + 0.1469693845669882 flexible_load_Q_8[29] + V_reduced[8,30]
+   = 1.001809685008001
+ voltage_assignment_8_4: V[8,4] - V_reduced[8,4] = 0
+ Q_accumulated_115_36: Q_accumulated[115,36] - Q_accumulated[115,37]
+   - Q_accumulated[115,38] - Q_accumulated[115,39] - Q_accumulated[115,40]
+   - Q_accumulated[115,41] - Q_accumulated[115,42] - Q_accumulated[115,43]
+   = 0.0048290314349335
+ Q_accumulated_115_37: Q_accumulated[115,37] - Q_accumulated[115,38]
+   - Q_accumulated[115,39] - Q_accumulated[115,40] - Q_accumulated[115,41]
+   - Q_accumulated[115,42] - Q_accumulated[115,43] = 0.0048290314349335
+ Q_accumulated_115_38: Q_accumulated[115,38] - Q_accumulated[115,39]
+   - Q_accumulated[115,40] - Q_accumulated[115,41] - Q_accumulated[115,42]
+   - Q_accumulated[115,43] = 0
+ Q_accumulated_115_39: Q_accumulated[115,39] - Q_accumulated[115,40]
+   = 0.00746405847971433
+ Q_accumulated_115_40: Q_accumulated[115,40] = 0.00526894320126285
+ Q_accumulated_115_41: Q_accumulated[115,41] - Q_accumulated[115,42]
+   - Q_accumulated[115,43] = 0.00790285935774486
+ Q_accumulated_115_42: Q_accumulated[115,42] - Q_accumulated[115,43]
+   = 0.00570774407929338
+ Q_accumulated_115_43: Q_accumulated[115,43] = 0.00395142967887243
+ Q_send_calc_34: Q_branch[115,34] - Q_accumulated[115,36] = 0
+ line_current_limit_34: I_branch_115_34 <= 0.27
+ qc0: V_to_squared_8_2 + [ - V[8,4] ^2 ] = 0
+ I_squared_calc_115_34: I_branch_squared_115_34 + [
+   - 2.083333333333333 P_branch[115,34] ^2
+   - 2.083333333333333 Q_branch[115,34] ^2 ] = 0
+ I_sqrt_constraint_115_34: - I_branch_squared_115_34 + [ I_branch_115_34 ^2
+   ] = 0
 Bounds
- ts_in_110_29 free
- energy_stored_110_29 free
- -infinity <= ts_in_111_29 <= 0.45
- ts_sof_111_29 free
- energy_stored_111_29 free
+ pv_gen_8[1] free
+ pv_gen_8[3] free
+ pv_gen_8[5] free
+ pv_gen_8[6] free
+ pv_gen_8[7] free
+ pv_gen_8[8] free
+ pv_gen_8[10] free
+ pv_gen_8[11] free
+ pv_gen_8[12] free
+ pv_gen_8[16] free
+ pv_gen_8[17] free
+ pv_gen_8[20] free
+ pv_gen_8[21] free
+ pv_gen_8[22] free
+ pv_gen_8[23] free
+ pv_gen_8[24] free
+ pv_gen_8[25] free
+ pv_gen_8[26] free
+ pv_gen_8[27] free
+ pv_gen_8[28] free
+ pv_gen_8[29] free
+ pv_gen_8[30] free
+ pv_gen_8[31] free
+ pv_gen_8[32] free
+ pv_gen_8[33] free
+ pv_gen_8[35] free
+ pv_gen_8[36] free
+ pv_gen_8[37] free
+ pv_gen_8[39] free
+ pv_gen_8[40] free
+ pv_gen_8[41] free
+ pv_gen_8[42] free
+ pv_gen_8[43] free
+ flexible_load_P_8[29] free
+ flexible_load_Q_8[29] free
+ V[8,4] free
+ V_reduced[8,4] free
+ P_branch[115,34] free
+ Q_branch[115,34] free
+ Q_accumulated[115,36] free
+ Q_accumulated[115,37] free
+ Q_accumulated[115,38] free
+ Q_accumulated[115,39] free
+ Q_accumulated[115,40] free
+ Q_accumulated[115,41] free
+ Q_accumulated[115,42] free
+ Q_accumulated[115,43] free
+ V_to_squared_8_2 free
+ I_branch_squared_115_34 free
 End
