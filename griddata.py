@@ -595,10 +595,10 @@ def setup_grid_IAS(season):
     
     # Define PV Capacity Categories
     pv_capacity_mapping = {
-        (0, 0.003): 0,  # 0 kWp
-        (0.003, 0.006): 0,  # 4 kWp
-        (0.006, 0.012): 0,  # 6 kWp
-        (0.012, float('inf')): 0  # 10 kWp
+        (0.00001, 0.003): 10,  # 0 kWp
+        (0.003, 0.006): 15,  # 4 kWp
+        (0.006, 0.012): 20,  # 6 kWp
+        (0.012, float('inf')): 25  # 10 kWp
     }
 
     # Function to determine PV capacity
@@ -629,6 +629,8 @@ def setup_grid_IAS(season):
             }, name=net.sgen.shape[0]))            
             pv_nodes.append(bus)
             pv_indices.append(pv_idx)
+    # Explicitly set the sgen at bus 29 to 0
+    net.sgen.loc[net.sgen["bus"] == 29, "p_mw"] = 0
 
     # Scale PV Profiles
     df_season_pv_prognosis = df_pv_prognosis[df_pv_prognosis['season'] == season].reset_index(drop=True)

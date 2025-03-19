@@ -1068,7 +1068,6 @@ def plot_ldf_results_plotly(results_df):
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
-
 def convert_keys_to_python_types(data):
     """Recursively converts all keys in dictionaries to standard Python types (int, str)."""
     if isinstance(data, dict):
