@@ -535,14 +535,14 @@ def setup_grid_IAS(season):
     #df_season_household_prognosis['meanP'] = df_season_household_prognosis['meanP'].str.replace(",", ".").astype(float)
     df_season_household_prognosis[['meanP', 'meanQ']] = df_season_household_prognosis[['meanP', 'meanQ']].astype(float)
     df_season_household_prognosis['P_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanP'] / df_household_prognosis['meanP'].max()
-    df_season_household_prognosis['Q_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanQ'] / df_household_prognosis['meanQ'].max()
+    df_season_household_prognosis['Q_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanQ'] / df_household_prognosis['meanP'].max()
     time_steps = df_season_household_prognosis.index
 
 
     # Exclude the heat pump load index from the household loads
     household_loads = net.load[(net.load['name'].str.startswith("LV4.101")) & (net.load.index != 21)]
     household_scaling_factors_P = household_loads['p_mw'].values  # Extract only active power scaling
-    household_scaling_factors_Q = household_loads['q_mvar'].values  # Extract only reactive power scaling
+    household_scaling_factors_Q = household_loads['p_mw'].values / 5  # Extract only reactive power scaling
 
     for load_idx in household_loads.index:
         net.load.at[load_idx, 'controllable'] = False
@@ -554,7 +554,7 @@ def setup_grid_IAS(season):
     )
 
     scaled_household_profiles_Q = pd.DataFrame(
-        df_season_household_prognosis['Q_HOUSEHOLD_NORM'].values[:, None] * household_scaling_factors_Q / par.hh_scaling,
+        df_season_household_prognosis['Q_HOUSEHOLD_NORM'].values[:, None] * household_scaling_factors_P * -1 / par.hh_scaling,
         columns=household_loads.index
     )
 
@@ -595,10 +595,10 @@ def setup_grid_IAS(season):
     
     # Define PV Capacity Categories
     pv_capacity_mapping = {
-        (0, 0.003): 4,  # 15 kWp
-        (0.003, 0.006): 6,  # 25 kWp
-        (0.006, 0.012): 10,  # 50 kWp
-        (0.012, float('inf')): 15  # 100 kWp
+        (0, 0.003): 0,  # 0 kWp
+        (0.003, 0.006): 0,  # 4 kWp
+        (0.006, 0.012): 0,  # 6 kWp
+        (0.012, float('inf')): 0  # 10 kWp
     }
 
     # Function to determine PV capacity
@@ -710,11 +710,11 @@ def setup_grid_IAS(season):
         df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
         columns=heatpump_loads.index
     )
-    Q_scaling = 0.5337
+    Q_scaling = par.Q_scaling
     #print("Q_scaling",Q_scaling)
 
     df_season_heatpump_prognosis_scaled_Q = pd.DataFrame(
-        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling * Q_scaling,
+        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * -1 * par.hp_scaling * Q_scaling,
         columns=heatpump_loads.index
 )
 

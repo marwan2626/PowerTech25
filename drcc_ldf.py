@@ -517,10 +517,10 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             name=f'limit_import_{t}'
         )
         # Voltage angle variables for all buses
-        V_vars[t] = model.addVars(net.bus.index, lb=0, ub=2, name=f'V_{t}')
+        # V_vars[t] = model.addVars(time_steps, net.bus.index, lb=0, ub=2, name=f'V_{t}')
 
-        # Fix the slack bus angle to 0 radians
-        model.addConstr(V_vars[t][slack_bus_index] == 1, name=f'slack_V_{t}')
+        # # Fix the slack bus angle to 0 radians
+        # model.addConstr(V_vars[t][slack_bus_index] == 1, name=f'slack_V_{t}')
 
         # Compute maximum heat demand for each flexible load bus over the day
         # max_heat_demand_per_bus = {
@@ -570,24 +570,24 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     non_slack_buses = [bus for bus in net.bus.index if bus != slack_bus_index]
 
     
-    V_vars = model.addVars(time_steps, net.bus.index, name="V")
+    V_vars = model.addVars(time_steps, net.bus.index, lb=0.8, ub=1.2, name="V")
     V_reduced_vars = model.addVars(time_steps, non_slack_buses, name="V_reduced")
     # Set slack bus voltage to 1.0 p.u. at all time steps
     for t in time_steps:
         model.addConstr(V_vars[t, slack_bus_index] == 1.0, name=f"slack_voltage_fixed_{t}")
 
-    P_branch_vars = model.addVars(time_steps, len(net.line), lb=-GRB.INFINITY, name="P_branch")
-    Q_branch_vars = model.addVars(time_steps, len(net.line), lb=-GRB.INFINITY, name="Q_branch")
-    P_trafo_vars = model.addVars(time_steps, len(net.trafo), lb=-GRB.INFINITY, name="P_trafo")
-    Q_trafo_vars = model.addVars(time_steps, len(net.trafo), lb=-GRB.INFINITY, name="Q_trafo")
-    S_trafo_vars = model.addVars(time_steps, len(net.trafo), lb=0, name="S_trafo")  
+    # P_branch_vars = model.addVars(time_steps, len(net.line), lb=-GRB.INFINITY, name="P_branch")
+    # Q_branch_vars = model.addVars(time_steps, len(net.line), lb=-GRB.INFINITY, name="Q_branch")
+    # P_trafo_vars = model.addVars(time_steps, len(net.trafo), lb=-GRB.INFINITY, name="P_trafo")
+    # Q_trafo_vars = model.addVars(time_steps, len(net.trafo), lb=-GRB.INFINITY, name="Q_trafo")
+    # S_trafo_vars = model.addVars(time_steps, len(net.trafo), lb=0, name="S_trafo")  
 
     # Transformer loading percentage
-    transformer_loading_perc_vars = model.addVars(time_steps, len(net.trafo), lb=0, ub=100, name="Trafo_loading_percent")
+    # transformer_loading_perc_vars = model.addVars(time_steps, len(net.trafo), lb=0, ub=100, name="Trafo_loading_percent")
 
-    # Accumulated power at each bus
-    P_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="P_accumulated")
-    Q_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="Q_accumulated")
+    # # Accumulated power at each bus
+    # P_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="P_accumulated")
+    # Q_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="Q_accumulated")
 
     # External grid variables
     ext_grid_import_P_vars = model.addVars(time_steps, lb=0, name="ext_grid_import_P")
@@ -671,10 +671,10 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
                     # Only add PV generation if the bus has PV (i.e., in net.sgen.bus)
                     P_injected[bus] += pv_gen_vars[t][bus]
 
-            if bus == slack_bus_index:
-                # Add the import minus export for the external grid power at the slack bus
-                P_injected[bus] += ext_grid_import_P_vars[t] - ext_grid_export_P_vars[t]
-                Q_injected[bus] += ext_grid_import_Q_vars[t] - ext_grid_export_Q_vars[t]
+            # if bus == slack_bus_index:
+            #     # Add the import minus export for the external grid power at the slack bus
+            #     P_injected[bus] += ext_grid_import_P_vars[t] - ext_grid_export_P_vars[t]
+            #     Q_injected[bus] += ext_grid_import_Q_vars[t] - ext_grid_export_Q_vars[t]
 
         model.update()
 
@@ -702,21 +702,40 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
         # Map V_reduced_vars to V_vars for non-slack buses
         for bus in non_slack_buses:
                 model.addConstr(V_vars[t, bus] == V_reduced_vars[t, bus], name=f"voltage_assignment_{t}_{bus}")
+        
+        model.addConstr(
+            ext_grid_import_P_vars[t] - ext_grid_export_P_vars[t] ==
+            gp.quicksum(P_injected[bus] for bus in net.bus.index),
+            name=f"P_balance_slack_{t}"
+        )
+        model.addConstr(
+            ext_grid_import_Q_vars[t] - ext_grid_export_Q_vars[t] ==
+            gp.quicksum(Q_injected[bus] for bus in net.bus.index),
+            name=f"Q_balance_slack_{t}"
+        )
+        model.addConstr(
+            (ext_grid_import_P_vars[t] * ext_grid_export_P_vars[t]) == 0, 
+            name=f"import_export_exclusivity_P_{t}"
+        )
+        model.addConstr(
+            (ext_grid_import_Q_vars[t] * ext_grid_export_Q_vars[t]) == 0, 
+            name=f"import_export_exclusivity_Q_{t}"
+    )
 
 
-        # Accumulate power for each bus (excluding slack)
-        for bus in net.bus.index:
-            if bus != slack_bus_index:
-                model.addConstr(
-                    P_accumulated_vars[t, bus] == P_injected[bus] +
-                    gp.quicksum(P_accumulated_vars[t, child_bus] for child_bus in downstream_map[bus]),
-                    name=f"P_accumulated_{t}_{bus}"
-                )
-                model.addConstr(
-                    Q_accumulated_vars[t, bus] == Q_injected[bus] +
-                    gp.quicksum(Q_accumulated_vars[t, child_bus] for child_bus in downstream_map[bus]),
-                    name=f"Q_accumulated_{t}_{bus}"
-                )
+        # # Accumulate power for each bus (excluding slack)
+        # for bus in net.bus.index:
+        #     if bus != slack_bus_index:
+        #         model.addConstr(
+        #             P_accumulated_vars[t, bus] == P_injected[bus] +
+        #             gp.quicksum(P_accumulated_vars[t, child_bus] for child_bus in downstream_map[bus]),
+        #             name=f"P_accumulated_{t}_{bus}"
+        #         )
+        #         model.addConstr(
+        #             Q_accumulated_vars[t, bus] == Q_injected[bus] +
+        #             gp.quicksum(Q_accumulated_vars[t, child_bus] for child_bus in downstream_map[bus]),
+        #             name=f"Q_accumulated_{t}_{bus}"
+        #         )
 
 
     # Enforce final state of fill to match initial state (0.5) for all flexible load buses
@@ -725,147 +744,147 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
 
     # Line power flow and loading constraints (with the corrected expression)
-    for t in time_steps:
-        line_results[t] = {
-            "line_pl_mw": {},
-            "line_ql_mvar": {},
-            "line_loading_percent": {},
-            "line_current_mag": {}
-        }
+    # for t in time_steps:
+    #     line_results[t] = {
+    #         "line_pl_mw": {},
+    #         "line_ql_mvar": {},
+    #         "line_loading_percent": {},
+    #         "line_current_mag": {}
+    #     }
 
-        for line in net.line.itertuples():
-            line_idx = line.Index  # Extract correct index
-            from_bus = line.from_bus
-            to_bus = line.to_bus
+        # for line in net.line.itertuples():
+        #     line_idx = line.Index  # Extract correct index
+        #     from_bus = line.from_bus
+        #     to_bus = line.to_bus
 
-            # Accumulated Power at Receiving End
-            P_recv = P_accumulated_vars[t, to_bus]
-            Q_recv = Q_accumulated_vars[t, to_bus]
+        #     # Accumulated Power at Receiving End
+        #     P_recv = P_accumulated_vars[t, to_bus]
+        #     Q_recv = Q_accumulated_vars[t, to_bus]
 
-            # Extract Line Impedance from Z
-            R_line = np.real(Z[line_idx])
-            X_line = np.imag(Z[line_idx])
+        #     # Extract Line Impedance from Z
+        #     R_line = np.real(Z[line_idx])
+        #     X_line = np.imag(Z[line_idx])
 
 
-            # Define voltage squared auxiliary variable
-            V_to_squared = model.addVar(name=f"V_to_squared_{t}_{line_idx}")
-            model.addConstr(V_to_squared == V_vars[t, to_bus] ** 2)
+        #     # Define voltage squared auxiliary variable
+        #     V_to_squared = model.addVar(name=f"V_to_squared_{t}_{line_idx}")
+        #     model.addConstr(V_to_squared == V_vars[t, to_bus] ** 2)
 
-            # # Compute line losses
-            # P_loss_line = model.addVar(lb=0, name=f"P_loss_line_{t}_{line_idx}")
-            # Q_loss_line = model.addVar(lb=0, name=f"Q_loss_line_{t}_{line_idx}")
+        #     # # Compute line losses
+        #     # P_loss_line = model.addVar(lb=0, name=f"P_loss_line_{t}_{line_idx}")
+        #     # Q_loss_line = model.addVar(lb=0, name=f"Q_loss_line_{t}_{line_idx}")
 
-            # model.addConstr(
-            #     P_loss_line * V_to_squared == R_line * ((P_recv**2 + Q_recv**2)),
-            #     name=f"P_loss_constraint_{line_idx}"
-            # )
+        #     # model.addConstr(
+        #     #     P_loss_line * V_to_squared == R_line * ((P_recv**2 + Q_recv**2)),
+        #     #     name=f"P_loss_constraint_{line_idx}"
+        #     # )
 
-            # model.addConstr(
-            #     Q_loss_line * V_to_squared == X_line * ((P_recv**2 + Q_recv**2)),
-            #     name=f"Q_loss_constraint_{line_idx}"
-            # )
+        #     # model.addConstr(
+        #     #     Q_loss_line * V_to_squared == X_line * ((P_recv**2 + Q_recv**2)),
+        #     #     name=f"Q_loss_constraint_{line_idx}"
+        #     # )
 
-            # Compute Sending-End Power
-            model.addConstr(
-                P_branch_vars[t, line_idx] == P_recv,
-                name=f"P_send_calc_{line_idx}"
-            )
+        #     # Compute Sending-End Power
+        #     model.addConstr(
+        #         P_branch_vars[t, line_idx] == P_recv,
+        #         name=f"P_send_calc_{line_idx}"
+        #     )
 
-            model.addConstr(
-                Q_branch_vars[t, line_idx] == Q_recv,
-                name=f"Q_send_calc_{line_idx}"
-            )
+        #     model.addConstr(
+        #         Q_branch_vars[t, line_idx] == Q_recv,
+        #         name=f"Q_send_calc_{line_idx}"
+        #     )
 
-            # Store results for each line in the time step
-            line_results[t]["line_pl_mw"][line_idx] = P_branch_vars[t, line_idx]
-            line_results[t]["line_ql_mvar"][line_idx] = Q_branch_vars[t, line_idx]
+        #     # Store results for each line in the time step
+        #     line_results[t]["line_pl_mw"][line_idx] = P_branch_vars[t, line_idx]
+        #     line_results[t]["line_ql_mvar"][line_idx] = Q_branch_vars[t, line_idx]
         
-        for line in net.line.itertuples():
-            line_idx = line.Index
-            from_bus = line.from_bus
-            base_voltage = net.bus.at[from_bus, 'vn_kv'] * 1e3  # Convert kV to V
+        # for line in net.line.itertuples():
+        #     line_idx = line.Index
+        #     from_bus = line.from_bus
+        #     base_voltage = net.bus.at[from_bus, 'vn_kv'] * 1e3  # Convert kV to V
 
-            # Define the current magnitude variable
-            I_branch_vars = model.addVar(lb=0, name=f"I_branch_{t}_{line_idx}")
+        #     # Define the current magnitude variable
+        #     I_branch_vars = model.addVar(lb=0, name=f"I_branch_{t}_{line_idx}")
 
-            # Define an auxiliary variable for squared current magnitude
-            I_branch_squared = model.addVar(lb=0, name=f"I_branch_squared_{t}_{line_idx}")
+        #     # Define an auxiliary variable for squared current magnitude
+        #     I_branch_squared = model.addVar(lb=0, name=f"I_branch_squared_{t}_{line_idx}")
 
-            # Quadratic constraint to model current squared
-            model.addConstr(
-                I_branch_squared == (P_branch_vars[t, line_idx] ** 2 + Q_branch_vars[t, line_idx] ** 2) / (3 * (base_voltage / 1e3) ** 2),
-                name=f"I_squared_calc_{t}_{line_idx}"
-            )
+        #     # Quadratic constraint to model current squared
+        #     model.addConstr(
+        #         I_branch_squared == (P_branch_vars[t, line_idx] ** 2 + Q_branch_vars[t, line_idx] ** 2) / (3 * (base_voltage / 1e3) ** 2),
+        #         name=f"I_squared_calc_{t}_{line_idx}"
+        #     )
 
-            # Second constraint to ensure correct square root relationship
-            model.addConstr(
-                I_branch_vars * I_branch_vars == I_branch_squared,
-                name=f"I_sqrt_constraint_{t}_{line_idx}"
-            )
+        #     # Second constraint to ensure correct square root relationship
+        #     model.addConstr(
+        #         I_branch_vars * I_branch_vars == I_branch_squared,
+        #         name=f"I_sqrt_constraint_{t}_{line_idx}"
+        #     )
 
-            # Ensure current does not exceed line rating
-            model.addConstr(
-                I_branch_vars <= line.max_i_ka,
-                name=f"line_current_limit_{line_idx}"
-            )
+        #     # Ensure current does not exceed line rating
+        #     model.addConstr(
+        #         I_branch_vars <= line.max_i_ka,
+        #         name=f"line_current_limit_{line_idx}"
+        #     )
 
-            # Compute Line Loading Percentage
-            Line_loading_vars = model.addVar(lb=0, name=f"Line_loading_{line_idx}")
+        #     # Compute Line Loading Percentage
+        #     Line_loading_vars = model.addVar(lb=0, name=f"Line_loading_{line_idx}")
 
-            model.addConstr(
-                Line_loading_vars == (I_branch_vars / line.max_i_ka) * 100,
-                name=f"line_loading_percent_{line_idx}"
-            )
+        #     model.addConstr(
+        #         Line_loading_vars == (I_branch_vars / line.max_i_ka) * 100,
+        #         name=f"line_loading_percent_{line_idx}"
+        #     )
 
-            # Store results
-            line_results[t]["line_loading_percent"][line_idx] = Line_loading_vars            
-            line_results[t]["line_current_mag"][line_idx] = I_branch_vars
+        #     # Store results
+        #     line_results[t]["line_loading_percent"][line_idx] = Line_loading_vars            
+        #     line_results[t]["line_current_mag"][line_idx] = I_branch_vars
 
-        # Transformer loading constraints
-        for trafo in net.trafo.itertuples():
-            trafo_idx = trafo.Index
-            lv_bus = trafo.lv_bus
-            hv_bus = trafo.hv_bus
+        # # Transformer loading constraints
+        # for trafo in net.trafo.itertuples():
+        #     trafo_idx = trafo.Index
+        #     lv_bus = trafo.lv_bus
+        #     hv_bus = trafo.hv_bus
 
-            # Transformer losses
-            R_trafo = np.real(Z[len(net.line) + trafo_idx])
-            X_trafo = np.imag(Z[len(net.line) + trafo_idx])
+        #     # Transformer losses
+        #     R_trafo = np.real(Z[len(net.line) + trafo_idx])
+        #     X_trafo = np.imag(Z[len(net.line) + trafo_idx])
 
-            P_loss_trafo = model.addVar(lb=0, name=f"P_loss_trafo_{t}_{trafo_idx}")
-            Q_loss_trafo = model.addVar(lb=0, name=f"Q_loss_trafo_{t}_{trafo_idx}")
+        #     P_loss_trafo = model.addVar(lb=0, name=f"P_loss_trafo_{t}_{trafo_idx}")
+        #     Q_loss_trafo = model.addVar(lb=0, name=f"Q_loss_trafo_{t}_{trafo_idx}")
 
-            # Auxiliary variable for squared voltage
-            V_lv_squared = model.addVar(name=f"V_lv_squared_{t}_{trafo_idx}")
-            model.addConstr(V_lv_squared == V_vars[t, lv_bus] * V_vars[t, lv_bus])
+        #     # Auxiliary variable for squared voltage
+        #     V_lv_squared = model.addVar(name=f"V_lv_squared_{t}_{trafo_idx}")
+        #     model.addConstr(V_lv_squared == V_vars[t, lv_bus] * V_vars[t, lv_bus])
 
-            # Reformulate constraints without division
-            model.addConstr(P_loss_trafo * V_lv_squared == R_trafo * (P_accumulated_vars[t, lv_bus] ** 2 + Q_accumulated_vars[t, lv_bus] ** 2))
-            model.addConstr(Q_loss_trafo * V_lv_squared == X_trafo * (P_accumulated_vars[t, lv_bus] ** 2 + Q_accumulated_vars[t, lv_bus] ** 2))
+        #     # Reformulate constraints without division
+        #     model.addConstr(P_loss_trafo * V_lv_squared == R_trafo * (P_accumulated_vars[t, lv_bus] ** 2 + Q_accumulated_vars[t, lv_bus] ** 2))
+        #     model.addConstr(Q_loss_trafo * V_lv_squared == X_trafo * (P_accumulated_vars[t, lv_bus] ** 2 + Q_accumulated_vars[t, lv_bus] ** 2))
 
-            # Transformer HV-side power flow
-            model.addConstr(P_trafo_vars[t, trafo_idx] == P_accumulated_vars[t, lv_bus] + P_loss_trafo)
-            model.addConstr(Q_trafo_vars[t, trafo_idx] == Q_accumulated_vars[t, lv_bus] + Q_loss_trafo)
+        #     # Transformer HV-side power flow
+        #     model.addConstr(P_trafo_vars[t, trafo_idx] == P_accumulated_vars[t, lv_bus] + P_loss_trafo)
+        #     model.addConstr(Q_trafo_vars[t, trafo_idx] == Q_accumulated_vars[t, lv_bus] + Q_loss_trafo)
 
-            # Compute apparent power
-            S_trafo_squared = model.addVar(lb=0, name=f"S_trafo_squared_{t}_{trafo_idx}")
-            model.addConstr(S_trafo_squared == P_trafo_vars[t, trafo_idx] ** 2 + Q_trafo_vars[t, trafo_idx] ** 2)
+        #     # Compute apparent power
+        #     S_trafo_squared = model.addVar(lb=0, name=f"S_trafo_squared_{t}_{trafo_idx}")
+        #     model.addConstr(S_trafo_squared == P_trafo_vars[t, trafo_idx] ** 2 + Q_trafo_vars[t, trafo_idx] ** 2)
 
-            # Compute transformer loading percentage
-            S_rated = net.trafo.sn_mva.iloc[trafo_idx]
-            model.addConstr(transformer_loading_perc_vars[t, trafo_idx] * (S_rated ** 2) == S_trafo_squared * 100)
+        #     # Compute transformer loading percentage
+        #     S_rated = net.trafo.sn_mva.iloc[trafo_idx]
+        #     model.addConstr(transformer_loading_perc_vars[t, trafo_idx] * (S_rated ** 2) == S_trafo_squared * 100)
 
-        # External Grid Balance
-        model.addConstr(
-            ext_grid_import_P_vars[t] - ext_grid_export_P_vars[t] == 
-            gp.quicksum(P_trafo_vars[t, trafo_idx] for trafo_idx in range(len(net.trafo))),
-            name=f"P_balance_slack_{t}"
-        )
+        # # External Grid Balance
+        # model.addConstr(
+        #     ext_grid_import_P_vars[t] - ext_grid_export_P_vars[t] == 
+        #     gp.quicksum(P_trafo_vars[t, trafo_idx] for trafo_idx in range(len(net.trafo))),
+        #     name=f"P_balance_slack_{t}"
+        # )
 
-        model.addConstr(
-            ext_grid_import_Q_vars[t] - ext_grid_export_Q_vars[t] ==
-            gp.quicksum(Q_trafo_vars[t, trafo_idx] for trafo_idx in range(len(net.trafo))),
-            name=f"Q_balance_slack_{t}"
-        )
+        # model.addConstr(
+        #     ext_grid_import_Q_vars[t] - ext_grid_export_Q_vars[t] ==
+        #     gp.quicksum(Q_trafo_vars[t, trafo_idx] for trafo_idx in range(len(net.trafo))),
+        #     name=f"Q_balance_slack_{t}"
+        # )
 
     # Objective: Minimize total cost (import, export, and curtailment costs)
     total_cost = gp.quicksum(
@@ -880,8 +899,8 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
     # After adding all constraints and variables
     model.setParam('OutputFlag', 0)
-    #model.setParam('Presolve', 0)
-    #model.setParam('NonConvex', 2)
+    model.setParam('Presolve', 0)
+    model.setParam('NonConvex', 2)
 
     model.update()
 
@@ -896,8 +915,8 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             pv_gen_results[t] = {bus: pv_gen_vars[t][bus].x for bus in pv_buses}
             ext_grid_import_P_results[t] = ext_grid_import_P_vars[t].x
             ext_grid_export_P_results[t] = ext_grid_export_P_vars[t].x
-            V_results[t] = {bus: V_vars[t][bus].x for bus in net.bus.index}
-            transformer_loading_results[t] = transformer_loading_perc_vars[t].x
+            V_results[t] = {bus: V_vars[t, bus].x for bus in net.bus.index}
+            #transformer_loading_results[t] = transformer_loading_perc_vars[t].x
             
             # Separate flexible and non-flexible load results
             load_P_results[t] = {
@@ -923,11 +942,11 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             ts_capacity_results['capacity'] = {bus: ts_capacity_vars[bus].x for bus in flexible_load_buses}
 
             # Extract numerical values for line results
-            for line in net.line.itertuples():
-                line_results[t]["line_pl_mw"][line.Index] = line_results[t]["line_pl_mw"][line.Index].getValue()
-                line_results[t]["line_ql_mvar"][line.Index] = line_results[t]["line_ql_mvar"][line.Index].getValue()
-                line_results[t]["line_loading_percent"][line.Index] = line_results[t]["line_loading_percent"][line.Index].getValue()
-                line_results[t]["line_current_mag"][line.Index] = line_results[t]["line_current_mag"][line.Index].getValue()
+            # for line in net.line.itertuples():
+            #     line_results[t]["line_pl_mw"][line.Index] = line_results[t]["line_pl_mw"][line.Index].getValue()
+            #     line_results[t]["line_ql_mvar"][line.Index] = line_results[t]["line_ql_mvar"][line.Index].getValue()
+            #     line_results[t]["line_loading_percent"][line.Index] = line_results[t]["line_loading_percent"][line.Index].getValue()
+            #     line_results[t]["line_current_mag"][line.Index] = line_results[t]["line_current_mag"][line.Index].getValue()
 
             # After optimization, print the key variable results
             #print(f"Time Step {t}:")

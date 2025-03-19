@@ -1064,3 +1064,94 @@ def plot_ldf_results_plotly(results_df):
 
         # Show plot
         fig.show()
+
+import pandas as pd
+import plotly.graph_objects as go
+import numpy as np
+
+def convert_keys_to_python_types(data):
+    """Recursively converts all keys in dictionaries to standard Python types (int, str)."""
+    if isinstance(data, dict):
+        return {str(k) if isinstance(k, np.int64) else k: convert_keys_to_python_types(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_keys_to_python_types(v) for v in data]
+    return data  # Base case, return value as-is
+
+def convert_results_to_dataframe(results):
+    """
+    Converts the results dictionary into a MultiIndex DataFrame.
+    """
+    results = convert_keys_to_python_types(results)  # Convert keys before processing
+    structured_data = {}
+
+    for category, time_series_data in results.items():
+        if isinstance(time_series_data, dict):  # Time-dependent data
+            for t, values in time_series_data.items():
+                if isinstance(values, dict):  # Bus/line indexed data
+                    for key, value in values.items():
+                        structured_data.setdefault((category, key), {})[t] = value
+                else:  # Scalar time series (e.g., ext_grid_import_P)
+                    structured_data.setdefault((category, ""), {})[t] = values
+
+    # Convert to DataFrame
+    df = pd.DataFrame.from_dict(structured_data, orient='index').T
+    df.index.name = "Time Step"
+    return df
+
+def plot_ldf_drcc_results_plotly(results):
+    """
+    Generates interactive Plotly plots for each variable in the results.
+
+    Parameters:
+    - results (dict): Dictionary of optimization results.
+    """
+    # Convert dictionary to MultiIndex DataFrame
+    results_df = convert_results_to_dataframe(results)
+    
+    # Get the top-level categories
+    categories = results_df.columns.get_level_values(0).unique()
+
+    for category in categories:
+        try:
+            sub_df = results_df.loc[:, pd.IndexSlice[category, :]]
+        except KeyError:
+            print(f"Warning: Category '{category}' not found in results_df. Skipping.")
+            continue
+
+        if sub_df.empty or sub_df.isna().all().all():
+            print(f"Info: '{category}' is empty. Displaying an empty plot.")
+            fig = go.Figure()
+            fig.update_layout(
+                title=f"{category} (No Data Available)",
+                xaxis_title="Time Step",
+                yaxis_title=category,
+                annotations=[dict(
+                    text="No data available",
+                    xref="paper", yref="paper",
+                    showarrow=False,
+                    font=dict(size=16)
+                )]
+            )
+            fig.show()
+            continue
+
+        # Create the plot
+        fig = go.Figure()
+        for column in sub_df.columns:
+            fig.add_trace(go.Scatter(
+                x=sub_df.index, 
+                y=sub_df[column], 
+                mode='lines', 
+                name=f"{category} - {column[1]}"  # Second level of MultiIndex
+            ))
+
+        # Customize layout
+        fig.update_layout(
+            title=f'{category} Over Time',
+            xaxis_title='Time Step',
+            yaxis_title=category,
+            hovermode="x unified"
+        )
+
+        # Show plot
+        fig.show()

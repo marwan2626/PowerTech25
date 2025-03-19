@@ -33,8 +33,8 @@ max_trafo_loading = 0.7 # max transformer loading
 
 ### THERMAL SYSTEM ###
 hp_max_power = 0.5 # heat pump max power in MW
-hp_pf = 0.8852
-Q_scaling = 0.1
+hp_pf = 0.98
+Q_scaling = 0.203
 ts_sof_init = 0.5 # initial state of fill of thermal storage
 ts_eff = 0.90 # thermal storage efficiency
 ts_alpha = 0.0001 # thermal storage heat loss factor
