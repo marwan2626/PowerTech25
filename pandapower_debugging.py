@@ -18,7 +18,7 @@ import os
 import pandapower as pp
 
 # Set up the grid and time series data
-net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, electricity_price = gd.setup_grid_IAS(season='winter')
+net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, electricity_price = gd.setup_grid_IAS(season='summer')
 #pp.runpp(net)
 
 #net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)

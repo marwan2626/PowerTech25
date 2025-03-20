@@ -360,6 +360,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     flexible_load_Q_vars = {}  # New flexible load variables
     P_branch_vars = {}  # Store line power flow decision variables
     Q_branch_vars = {}  # Store line power flow decision variables
+    Line_loading_vars = {}  # Store line loading decision variables
     P_trafo_vars = {}  # Store transformer loading decision variables
     Q_trafo_vars = {}  # Store transformer loading decision variables
     S_trafo_vars = {}  # Store transformer loading decision variables
@@ -578,16 +579,44 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
     P_branch_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="P_branch")
     Q_branch_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="Q_branch")
+
     P_trafo_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="P_trafo")
     Q_trafo_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="Q_trafo")
     S_trafo_vars = model.addVars(time_steps, net.line.index, lb=0, name="S_trafo")  
 
     #Transformer loading percentage
     transformer_loading_perc_vars = model.addVars(time_steps, net.trafo.index, lb=0, name="Trafo_loading_percent")
+    Line_loading_vars = model.addVars(time_steps, net.line.index, lb=0, name="Line_loading")
+    # Initialize as a structured dictionary of linear expressions
+    Line_loading_expr = {}
+    # Define expressions for each time step and line
+    for t in time_steps:
+        for line_idx in net.line.index:
+            Line_loading_expr[t, line_idx] = gp.LinExpr()  # Properly initialize each entry
+    S_branch_approx_expr = {}
+    for t in time_steps:
+        for line_idx in net.line.index:
+            S_branch_approx_expr[t, line_idx] = gp.LinExpr()
+
+
 
     # Accumulated power at each bus
     P_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="P_accumulated")
     Q_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="Q_accumulated")
+
+    # Initialize dictionaries for absolute value variables
+    P_abs_vars = model.addVars(time_steps, net.line.index, lb=0, ub=GRB.INFINITY, name="P_abs")
+    Q_abs_vars = model.addVars(time_steps, net.line.index, lb=0, ub=GRB.INFINITY, name="Q_abs")
+    S_branch_approx_vars = model.addVars(time_steps, net.line.index, lb=0, name="S_branch_approx")
+
+    P_sign = model.addVars(time_steps, net.line.index, vtype=GRB.BINARY, name="P_sign")
+    Q_sign = model.addVars(time_steps, net.line.index, vtype=GRB.BINARY, name="Q_sign")
+
+
+    M = 2  # Choose a reasonable large value
+
+
+
     
     
     # Add power balance and load flow constraints for each time step
@@ -743,33 +772,6 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             from_bus = line.from_bus
             to_bus = line.to_bus
 
-            # Accumulated Power at Receiving End
-            #P_recv = P_accumulated_vars[t, to_bus]
-            #Q_recv = Q_accumulated_vars[t, to_bus]
-
-            # Extract Line Impedance from Z
-            # R_line = np.real(Z[line_idx])
-            # X_line = np.imag(Z[line_idx])
-
-
-            # Define voltage squared auxiliary variable
-            # V_to_squared = model.addVar(name=f"V_to_squared_{t}_{line_idx}")
-            # model.addConstr(V_to_squared == V_vars[t, to_bus] ** 2)
-
-            # # Compute line losses
-            # P_loss_line = model.addVar(lb=0, name=f"P_loss_line_{t}_{line_idx}")
-            # Q_loss_line = model.addVar(lb=0, name=f"Q_loss_line_{t}_{line_idx}")
-
-            # model.addConstr(
-            #     P_loss_line * V_to_squared == R_line * ((P_recv**2 + Q_recv**2)),
-            #     name=f"P_loss_constraint_{line_idx}"
-            # )
-
-            # model.addConstr(
-            #     Q_loss_line * V_to_squared == X_line * ((P_recv**2 + Q_recv**2)),
-            #     name=f"Q_loss_constraint_{line_idx}"
-            # )
-
             # Compute Sending-End Power
             model.addConstr(
                 P_branch_vars[t, line_idx] == P_accumulated_vars[t, to_bus],
@@ -781,43 +783,40 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
                 name=f"Q_send_calc_{line_idx}"
             )
 
-        
-        for line in net.line.itertuples():
-            line_idx = line.Index
-            from_bus = line.from_bus
-            to_bus = line.to_bus
+            # Enforce |P| = max(P, -P)
+            # Force correct absolute value using big-M formulation
+            model.addConstr(P_abs_vars[t, line_idx] >= P_branch_vars[t, line_idx], name=f"P_abs_pos_{t}_{line_idx}")
+            model.addConstr(P_abs_vars[t, line_idx] >= -P_branch_vars[t, line_idx], name=f"P_abs_neg_{t}_{line_idx}")
 
-            # Use actual voltage from the optimization variable
-            V_from = V_vars[t, from_bus]
+            # Enforce that exactly one of the conditions holds
+            model.addConstr(P_abs_vars[t, line_idx] <= P_branch_vars[t, line_idx] + M * (1 - P_sign[t, line_idx]),
+                            name=f"P_abs_helper1_{t}_{line_idx}")
+            model.addConstr(P_abs_vars[t, line_idx] <= -P_branch_vars[t, line_idx] + M * P_sign[t, line_idx],
+                            name=f"P_abs_helper2_{t}_{line_idx}")
+            
+            # Force correct absolute value using big-M formulation for Q
+            model.addConstr(Q_abs_vars[t, line_idx] >= Q_branch_vars[t, line_idx], name=f"Q_abs_pos_{t}_{line_idx}")
+            model.addConstr(Q_abs_vars[t, line_idx] >= -Q_branch_vars[t, line_idx], name=f"Q_abs_neg_{t}_{line_idx}")
 
-            # Define the current magnitude variable
-            I_branch_vars = model.addVar(lb=0, name=f"I_branch_{t}_{line_idx}")
+            model.addConstr(Q_abs_vars[t, line_idx] <= Q_branch_vars[t, line_idx] + M * (1 - Q_sign[t, line_idx]),
+                            name=f"Q_abs_helper1_{t}_{line_idx}")
+            model.addConstr(Q_abs_vars[t, line_idx] <= -Q_branch_vars[t, line_idx] + M * Q_sign[t, line_idx],
+                            name=f"Q_abs_helper2_{t}_{line_idx}")
 
-            # Compute apparent power S = sqrt(P^2 + Q^2) using GenConstrNorm
-            S_branch = model.addVar(lb=0, name=f"S_branch_{t}_{line_idx}")
-            model.addGenConstrNorm(S_branch, [P_branch_vars[t, line_idx], Q_branch_vars[t, line_idx]], 2)
+            # Approximate apparent power using linear relaxation
+            S_branch_approx_expr[t, line_idx] = P_abs_vars[t, line_idx] + Q_abs_vars[t, line_idx]
 
-            sqrt3 = np.sqrt(3)
+            # Define line rating based on voltage and current limits
+            S_rated = np.sqrt(3) * line.max_i_ka * net.bus.at[from_bus, 'vn_kv']
 
-            # Ohm's law for current magnitude: I = S / (sqrt(3) * V_from)
+            # Compute line loading percentage as a linear expression
+            Line_loading_expr[t, line_idx] = (S_branch_approx_vars[t, line_idx] / S_rated) * 100
+
+            # Enforce the 80% limit correctly
             model.addConstr(
-                I_branch_vars * (sqrt3 * V_from) == S_branch,
-                name=f"I_current_relation_{t}_{line_idx}"
+                Line_loading_expr[t, line_idx] <= 80,
+                name=f"line_loading_limit_{t}_{line_idx}"
             )
-
-            # Ensure current does not exceed line rating
-            # model.addConstr(
-            #     I_branch_vars <= line.max_i_ka,
-            #     name=f"line_current_limit_{line_idx}"
-            # )
-
-            # Compute Line Loading Percentage
-            Line_loading_vars = model.addVar(lb=0, name=f"Line_loading_{line_idx}")
-            model.addConstr(
-                Line_loading_vars == (I_branch_vars / line.max_i_ka) * 100,
-                name=f"line_loading_percent_{line_idx}"
-            )
-
         # Transformer loading constraints
         for trafo in net.trafo.itertuples():
             trafo_idx = trafo.Index
@@ -850,6 +849,11 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             # Compute transformer loading percentage
             S_rated = net.trafo.sn_mva.iloc[trafo_idx]
             model.addConstr(transformer_loading_perc_vars[t, trafo_idx] == (S_trafo_vars / S_rated) * 100, name=f"trafo_loading_{t}_{trafo_idx}")
+
+            model.addConstr(
+            transformer_loading_perc_vars[t, trafo_idx] <= 80,  # Enforce 80% limit
+            name=f"trafo_loading_limit_{t}_{trafo_idx}"
+        )
 
         # External Grid Balance
         model.addConstr(
@@ -886,19 +890,33 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     model.optimize()
     problematic_buses = [16]
     if model.status == gp.GRB.OPTIMAL:
-        print("\n=== DEBUG: Power Accumulation Breakdown for Problematic Buses ===")
+        #print("\n=== DEBUG: Power Accumulation Breakdown for Problematic Buses ===")
         for t in time_steps:
             for bus in problematic_buses:
                 downstream_buses = downstream_map[bus]
                 downstream_values = [P_accumulated_vars[t, child_bus].x for child_bus in downstream_buses]
-                print(f"Time {t}, Bus {bus}:")
-                print(f"   P_injected = {P_injected[bus]}")
-                print(f"   Downstream Buses = {downstream_buses}")
-                print(f"   Downstream Accumulated = {downstream_values}")
-                print(f"   Computed P_accumulated = {P_accumulated_vars[t, bus].x}\n")
+                # print(f"Time {t}, Bus {bus}:")
+                # print(f"   P_injected = {P_injected[bus]}")
+                # print(f"   Downstream Buses = {downstream_buses}")
+                # print(f"   Downstream Accumulated = {downstream_values}")
+                # print(f"   Computed P_accumulated = {P_accumulated_vars[t, bus].x}\n")
     # Check if optimization was successful
     if model.status == gp.GRB.OPTIMAL:
         print(f"OPF Optimal Objective Value: {model.ObjVal}")
+        print("\n--- Debugging P_abs and P_branch Values ---\n")
+    
+        for t in time_steps:
+            print(f"\nTime Step {t}:")
+            for line_idx in net.line.index:
+                P_branch_val = P_branch_vars[t, line_idx].x
+                P_abs_val = P_abs_vars[t, line_idx].x
+                Q_branch_val = Q_branch_vars[t, line_idx].x
+                Q_abs_val = Q_abs_vars[t, line_idx].x
+
+                print(f"  Line {line_idx}:")
+                print(f"    P_branch = {P_branch_val:.6f}, P_abs = {P_abs_val:.6f}")
+                print(f"    Q_branch = {Q_branch_val:.6f}, Q_abs = {Q_abs_val:.6f}")
+
         # Extract optimized values for PV generation, external grid power, loads, and theta
         for t in time_steps:
             pv_gen_results[t] = {bus: pv_gen_vars[t][bus].x for bus in pv_buses}
@@ -931,8 +949,10 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             line_ql_results[t] = {
                 line_idx: Q_branch_vars[t, line_idx].x for line_idx in net.line.index
             }
-            #line_loading_results[t] = Line_loading_vars[t].x
-            #line_current_results[t] = I_branch_vars[t].x
+            line_loading_results = {
+                t: {line_idx: Line_loading_expr[t, line_idx].getValue() for line_idx in net.line.index}
+                for t in time_steps
+            }
 
         # Return results in a structured format
         results = {
