@@ -26,7 +26,7 @@ import numpy as np
 ## GENERAL ## 
 ###############################################################################
 ### NETWORK ###
-hp_scaling = 30 # heat pump scaling factor
+hp_scaling = 40 # heat pump scaling factor
 hh_scaling = 1 # household scaling factor
 
 max_trafo_loading = 0.7 # max transformer loading
@@ -48,7 +48,7 @@ DeltaT = 2.1966# temperature difference in K
 T_S = 75+273.15 # temperature of the heat source in K
 
 ### Optimization Costs ###
-curtailment_cost = 150  # €/MW for curtailing PV (set higher than import/export costs)
+curtailment_cost = 300  # €/MW for curtailing PV (set higher than import/export costs)
 HNS_cost = 5000  # €/MW for HNS
 c_cost = 8000 #€/MWh cost of ts energy storage in €/MWh
 

@@ -18,7 +18,7 @@ import os
 import pandapower as pp
 
 # Set up the grid and time series data
-net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, electricity_price = gd.setup_grid_IAS(season='summer')
+net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, electricity_price = gd.setup_grid_IAS(season='winter')
 #pp.runpp(net)
 
 #net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)
@@ -53,6 +53,7 @@ def create_output_writer(net, time_steps, output_dir):
 
     # Load Variables
     ow.log_variable('res_load', 'p_mw')  # Load Power
+    ow.log_variable('res_load', 'q_mvar')  # Load Reactive Power
 
     # Line Variables
     ow.log_variable('res_line', 'p_from_mw')  # Line Active Power
@@ -118,7 +119,11 @@ def plot_results():
 
     # 4️⃣ Load Power
     plot_file(os.path.join(output_dir, "res_load", "p_mw.xlsx"), 
-              "Load Power [MW]", "Load Power")
+              "Load Power [MW]", "Load Active Power")
+    
+    # 4️⃣ Load Power
+    plot_file(os.path.join(output_dir, "res_load", "q_mvar.xlsx"), 
+              "Load Power [MVar]", "Load Reactive Power")
 
     # 5️⃣ Line Power (Active)
     plot_file(os.path.join(output_dir, "res_line", "p_from_mw.xlsx"), 

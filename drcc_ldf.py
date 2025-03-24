@@ -513,26 +513,9 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
         model.addConstr(ext_grid_import_P_vars[t] + ext_grid_export_Q_vars[t] >= epsilon, name=f'nonzero_ext_grid_P_usage_{t}')
         model.addConstr(ext_grid_import_Q_vars[t] + ext_grid_export_Q_vars[t] >= epsilon, name=f'nonzero_ext_grid_Q_usage_{t}')
 
-        # Limit grid import and export based on transformer capacity
-        # model.addConstr(
-        #     (ext_grid_import_P_vars[t]**2 + ext_grid_import_Q_vars[t]**2) <= transformer_capacity_mw**2, 
-        #     name=f'limit_import_{t}'
-        # )
-        # model.addConstr(
-        #     (ext_grid_export_P_vars[t]**2 + ext_grid_export_Q_vars[t]**2) <= transformer_capacity_mw**2, 
-        #     name=f'limit_import_{t}'
-        # )
-
-        # Compute maximum heat demand for each flexible load bus over the day
-        # max_heat_demand_per_bus = {
-        #     bus: max(flexible_time_synchronized_loads[t].get(bus, 0.0) for t in time_steps)
-        #     for bus in flexible_load_buses
-        # }
-
         # Define flexible load variables with global peak limit (par.hp_max_power)
         flexible_load_P_vars[t] = model.addVars(
             flexible_load_buses,
-            lb=0,
             ub=par.hp_max_power,
             name=f'flexible_load_P_{t}'
         )
@@ -557,8 +540,6 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
         )
                             
        
-    k_epsilon = np.sqrt((1 - par.epsilon) / par.epsilon)
-
     # Update SOF constraints for each flexible load bus
     for t_idx, t in enumerate(time_steps):
         for bus in flexible_load_buses:
@@ -571,7 +552,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     non_slack_buses = [bus for bus in net.bus.index if bus != slack_bus_index]
 
     
-    V_vars = model.addVars(time_steps, net.bus.index, lb=0.95, ub=1.05, name="V")
+    V_vars = model.addVars(time_steps, net.bus.index, name="V")
     V_reduced_vars = model.addVars(time_steps, non_slack_buses, name="V_reduced")
     # Set slack bus voltage to 1.0 p.u. at all time steps
     for t in time_steps:
@@ -579,6 +560,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
     P_branch_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="P_branch")
     Q_branch_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="Q_branch")
+    S_branch_vars = model.addVars(time_steps, net.line.index, lb=0, name="S_branch")
 
     P_trafo_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="P_trafo")
     Q_trafo_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="Q_trafo")
@@ -586,7 +568,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
     #Transformer loading percentage
     transformer_loading_perc_vars = model.addVars(time_steps, net.trafo.index, lb=0, name="Trafo_loading_percent")
-    Line_loading_vars = model.addVars(time_steps, net.line.index, lb=0, name="Line_loading")
+    Line_loading_vars = model.addVars(time_steps, net.line.index, name="Line_loading")
     # Initialize as a structured dictionary of linear expressions
     Line_loading_expr = {}
     # Define expressions for each time step and line
@@ -604,21 +586,6 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     P_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="P_accumulated")
     Q_accumulated_vars = model.addVars(time_steps, net.bus.index, lb=-GRB.INFINITY, name="Q_accumulated")
 
-    # Initialize dictionaries for absolute value variables
-    P_abs_vars = model.addVars(time_steps, net.line.index, lb=0, ub=GRB.INFINITY, name="P_abs")
-    Q_abs_vars = model.addVars(time_steps, net.line.index, lb=0, ub=GRB.INFINITY, name="Q_abs")
-    S_branch_approx_vars = model.addVars(time_steps, net.line.index, lb=0, name="S_branch_approx")
-
-    P_sign = model.addVars(time_steps, net.line.index, vtype=GRB.BINARY, name="P_sign")
-    Q_sign = model.addVars(time_steps, net.line.index, vtype=GRB.BINARY, name="Q_sign")
-
-
-    M = 2  # Choose a reasonable large value
-
-
-
-    
-    
     # Add power balance and load flow constraints for each time step
     for t in time_steps:
         # Power injection vector P
@@ -681,7 +648,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
                     )
                     # Use the flexible load variable for controllable loads
                     P_injected[bus] -= flexible_load_P_vars[t][bus]
-                    Q_injected[bus] -= flexible_load_Q_vars[t][bus]
+                    Q_injected[bus] += flexible_load_Q_vars[t][bus]
 
                 if bus in non_flexible_load_buses:
                     # For non-flexible loads, use the time-synchronized load
@@ -730,14 +697,14 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
         #     gp.quicksum(Q_injected[bus] for bus in net.bus.index),
         #     name=f"Q_balance_slack_{t}"
         #)
-        # model.addConstr(
-        #     (ext_grid_import_P_vars[t] * ext_grid_export_P_vars[t]) == 0, 
-        #     name=f"import_export_exclusivity_P_{t}"
-        # )
-        # model.addConstr(
-        #     (ext_grid_import_Q_vars[t] * ext_grid_export_Q_vars[t]) == 0, 
-        #     name=f"import_export_exclusivity_Q_{t}"
-        # )
+        model.addConstr(
+            (ext_grid_import_P_vars[t] * ext_grid_export_P_vars[t]) == 0, 
+            name=f"import_export_exclusivity_P_{t}"
+        )
+        model.addConstr(
+            (ext_grid_import_Q_vars[t] * ext_grid_export_Q_vars[t]) == 0, 
+            name=f"import_export_exclusivity_Q_{t}"
+        )
 
 
         # Accumulate power for each bus (excluding slack)
@@ -785,38 +752,50 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
             # Enforce |P| = max(P, -P)
             # Force correct absolute value using big-M formulation
-            model.addConstr(P_abs_vars[t, line_idx] >= P_branch_vars[t, line_idx], name=f"P_abs_pos_{t}_{line_idx}")
-            model.addConstr(P_abs_vars[t, line_idx] >= -P_branch_vars[t, line_idx], name=f"P_abs_neg_{t}_{line_idx}")
+            # model.addConstr(P_abs_vars[t, line_idx] >= P_branch_vars[t, line_idx], name=f"P_abs_pos_{t}_{line_idx}")
+            # model.addConstr(P_abs_vars[t, line_idx] >= -P_branch_vars[t, line_idx], name=f"P_abs_neg_{t}_{line_idx}")
 
             # Enforce that exactly one of the conditions holds
-            model.addConstr(P_abs_vars[t, line_idx] <= P_branch_vars[t, line_idx] + M * (1 - P_sign[t, line_idx]),
-                            name=f"P_abs_helper1_{t}_{line_idx}")
-            model.addConstr(P_abs_vars[t, line_idx] <= -P_branch_vars[t, line_idx] + M * P_sign[t, line_idx],
-                            name=f"P_abs_helper2_{t}_{line_idx}")
+            # model.addConstr(P_abs_vars[t, line_idx] <= P_branch_vars[t, line_idx] + M * (1 - P_sign[t, line_idx]),
+            #                 name=f"P_abs_helper1_{t}_{line_idx}")
+            # model.addConstr(P_abs_vars[t, line_idx] <= -P_branch_vars[t, line_idx] + M * P_sign[t, line_idx],
+            #                 name=f"P_abs_helper2_{t}_{line_idx}")
             
-            # Force correct absolute value using big-M formulation for Q
-            model.addConstr(Q_abs_vars[t, line_idx] >= Q_branch_vars[t, line_idx], name=f"Q_abs_pos_{t}_{line_idx}")
-            model.addConstr(Q_abs_vars[t, line_idx] >= -Q_branch_vars[t, line_idx], name=f"Q_abs_neg_{t}_{line_idx}")
+            # # Force correct absolute value using big-M formulation for Q
+            # model.addConstr(Q_abs_vars[t, line_idx] >= Q_branch_vars[t, line_idx], name=f"Q_abs_pos_{t}_{line_idx}")
+            # model.addConstr(Q_abs_vars[t, line_idx] >= -Q_branch_vars[t, line_idx], name=f"Q_abs_neg_{t}_{line_idx}")
 
-            model.addConstr(Q_abs_vars[t, line_idx] <= Q_branch_vars[t, line_idx] + M * (1 - Q_sign[t, line_idx]),
-                            name=f"Q_abs_helper1_{t}_{line_idx}")
-            model.addConstr(Q_abs_vars[t, line_idx] <= -Q_branch_vars[t, line_idx] + M * Q_sign[t, line_idx],
-                            name=f"Q_abs_helper2_{t}_{line_idx}")
+            # model.addConstr(Q_abs_vars[t, line_idx] <= Q_branch_vars[t, line_idx] + M * (1 - Q_sign[t, line_idx]),
+            #                 name=f"Q_abs_helper1_{t}_{line_idx}")
+            # model.addConstr(Q_abs_vars[t, line_idx] <= -Q_branch_vars[t, line_idx] + M * Q_sign[t, line_idx],
+            #                 name=f"Q_abs_helper2_{t}_{line_idx}")
 
             # Approximate apparent power using linear relaxation
-            S_branch_approx_expr[t, line_idx] = P_abs_vars[t, line_idx] + Q_abs_vars[t, line_idx]
+            # S_branch_approx_expr[t, line_idx] = P_abs_vars[t, line_idx] + Q_abs_vars[t, line_idx]
+
+            # Compute apparent power (S_line)
+            #S_line_vars = model.addVar(lb=0, name=f"S_line_{t}_{line_idx}")
+            model.addGenConstrNorm(S_branch_vars[t, line_idx], [P_branch_vars[t, line_idx], Q_branch_vars[t, line_idx]], 2, name=f"S_branch_calc_{t}_{line_idx}")
 
             # Define line rating based on voltage and current limits
-            S_rated = np.sqrt(3) * line.max_i_ka * net.bus.at[from_bus, 'vn_kv']
+            S_rated_line = np.sqrt(3) * line.max_i_ka * net.bus.at[from_bus, 'vn_kv']
 
-            # Compute line loading percentage as a linear expression
-            Line_loading_expr[t, line_idx] = (S_branch_approx_vars[t, line_idx] / S_rated) * 100
+            model.addConstr(Line_loading_vars[t, line_idx] == (S_branch_vars[t, line_idx] / S_rated_line) * 100, name=f"line_loading_{t}_{line_idx}")
 
-            # Enforce the 80% limit correctly
             model.addConstr(
-                Line_loading_expr[t, line_idx] <= 80,
-                name=f"line_loading_limit_{t}_{line_idx}"
+            Line_loading_vars[t, line_idx] <= 80,  # Enforce 80% limit
+            name=f"line_loading_limit_{t}_{line_idx}"
             )
+            
+
+            # # Compute line loading percentage as a linear expression
+            # Line_loading_expr[t, line_idx] = (S_branch_approx_vars[t, line_idx] / S_rated) * 100
+
+            # # Enforce the 80% limit correctly
+            # model.addConstr(
+            #     Line_loading_expr[t, line_idx] <= 80,
+            #     name=f"line_loading_limit_{t}_{line_idx}"
+            # )
         # Transformer loading constraints
         for trafo in net.trafo.itertuples():
             trafo_idx = trafo.Index
@@ -880,43 +859,20 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     model.setObjective(total_cost, GRB.MINIMIZE)
 
     # After adding all constraints and variables
-    model.setParam('OutputFlag', 0)
-    model.setParam('Presolve', 0)
+    #model.setParam('OutputFlag', 0)
+    #model.setParam('Presolve', 0)
     model.setParam('NonConvex', 2)
 
     model.update()
 
     # Optimize the model
     model.optimize()
-    problematic_buses = [16]
-    if model.status == gp.GRB.OPTIMAL:
-        #print("\n=== DEBUG: Power Accumulation Breakdown for Problematic Buses ===")
-        for t in time_steps:
-            for bus in problematic_buses:
-                downstream_buses = downstream_map[bus]
-                downstream_values = [P_accumulated_vars[t, child_bus].x for child_bus in downstream_buses]
-                # print(f"Time {t}, Bus {bus}:")
-                # print(f"   P_injected = {P_injected[bus]}")
-                # print(f"   Downstream Buses = {downstream_buses}")
-                # print(f"   Downstream Accumulated = {downstream_values}")
-                # print(f"   Computed P_accumulated = {P_accumulated_vars[t, bus].x}\n")
+
     # Check if optimization was successful
     if model.status == gp.GRB.OPTIMAL:
         print(f"OPF Optimal Objective Value: {model.ObjVal}")
-        print("\n--- Debugging P_abs and P_branch Values ---\n")
+        #print("\n--- Debugging P_abs and P_branch Values ---\n")
     
-        for t in time_steps:
-            print(f"\nTime Step {t}:")
-            for line_idx in net.line.index:
-                P_branch_val = P_branch_vars[t, line_idx].x
-                P_abs_val = P_abs_vars[t, line_idx].x
-                Q_branch_val = Q_branch_vars[t, line_idx].x
-                Q_abs_val = Q_abs_vars[t, line_idx].x
-
-                print(f"  Line {line_idx}:")
-                print(f"    P_branch = {P_branch_val:.6f}, P_abs = {P_abs_val:.6f}")
-                print(f"    Q_branch = {Q_branch_val:.6f}, Q_abs = {Q_abs_val:.6f}")
-
         # Extract optimized values for PV generation, external grid power, loads, and theta
         for t in time_steps:
             pv_gen_results[t] = {bus: pv_gen_vars[t][bus].x for bus in pv_buses}
@@ -944,14 +900,29 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             ts_capacity_results['capacity'] = {bus: ts_capacity_vars[bus].x for bus in flexible_load_buses}
 
             line_pl_results[t] = {
-                line_idx: P_branch_vars[t, line_idx].x for line_idx in net.line.index
+                line_idx: -1 * P_branch_vars[t, line_idx].x for line_idx in net.line.index
             }
             line_ql_results[t] = {
-                line_idx: Q_branch_vars[t, line_idx].x for line_idx in net.line.index
+                line_idx: -1 * Q_branch_vars[t, line_idx].x for line_idx in net.line.index
             }
-            line_loading_results = {
-                t: {line_idx: Line_loading_expr[t, line_idx].getValue() for line_idx in net.line.index}
-                for t in time_steps
+            line_loading_results[t] = {
+                line_idx: Line_loading_vars[t, line_idx].x for line_idx in net.line.index
+            }
+
+            # line_loading_results[t] = {
+            #     line_idx: (
+            #         np.sqrt(P_branch_vars[t, line_idx].x**2 + Q_branch_vars[t, line_idx].x**2) /
+            #         (np.sqrt(3) * V_results[t][net.line.at[line_idx, 'from_bus']] * net.bus.at[net.line.at[line_idx, 'from_bus'], 'vn_kv'])
+            #     ) * 100
+            #     for line_idx in net.line.index
+            # }
+
+            line_current_results[t] = {
+                line_idx: (
+                    S_branch_vars[t, line_idx].x /
+                    (np.sqrt(3) * V_results[t][net.line.at[line_idx, 'from_bus']] * net.bus.at[net.line.at[line_idx, 'from_bus'], 'vn_kv'])
+                )
+                for line_idx in net.line.index
             }
 
         # Return results in a structured format
