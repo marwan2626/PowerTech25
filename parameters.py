@@ -26,7 +26,7 @@ import numpy as np
 ## GENERAL ## 
 ###############################################################################
 ### NETWORK ###
-hp_scaling = 40 # heat pump scaling factor
+hp_scaling = 1 # heat pump scaling factor
 hh_scaling = 1 # household scaling factor
 
 max_trafo_loading = 0.7 # max transformer loading

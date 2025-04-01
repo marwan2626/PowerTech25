@@ -497,28 +497,28 @@ def setup_grid_IAS(season):
         net.line.loc[idx, ['from_bus', 'to_bus']] = net.line.loc[idx, ['to_bus', 'from_bus']].values
 
     # Buses and lines to remove
-    buses_to_drop = [14, 34, 9, 19]
+    #buses_to_drop = [14, 34, 9, 19]
 
     # Filter loads connected to the specified buses
-    loads_to_modify = net.load[net.load.bus.isin(buses_to_drop)].index
+    #loads_to_modify = net.load[net.load.bus.isin(buses_to_drop)].index
 
     # Set the 'p_mw' and 'q_mvar' columns to zero
-    net.load.loc[loads_to_modify, ['p_mw', 'q_mvar']] = 0
+    #net.load.loc[loads_to_modify, ['p_mw', 'q_mvar']] = 0
 
     # Rename the loads to "DEACTIVATE"
-    net.load.loc[loads_to_modify, 'name'] = "DEACTIVATE"
+    #net.load.loc[loads_to_modify, 'name'] = "DEACTIVATE"
 
     # Update line at index 9 to represent 2 parallel NAYY 4x300 cables
-    line_idx = 9
-    net.line.loc[line_idx, ['name', 'type', 'length_km', 'r_ohm_per_km', 'x_ohm_per_km', 'c_nf_per_km', 'max_i_ka']] = [
-        "LV4.101 Line 7 (Parallel 2x NAYY 4x300)",  # New name
-        "cs",  # Type remains the same
-        0.001552,  # Length (unchanged)
-        0.1 / 2,  # resistance for parallel cables
-        0.080425 / 2,  # Halve reactance for parallel cables
-        829.999394 * 2,  # Double capacitance for parallel cables
-        0.838  # Max current capacity in kA (2x NAYY 4x300 ~ 450 A per cable)
-    ]
+    # line_idx = 9
+    # net.line.loc[line_idx, ['name', 'type', 'length_km', 'r_ohm_per_km', 'x_ohm_per_km', 'c_nf_per_km', 'max_i_ka']] = [
+    #     "LV4.101 Line 7 (Parallel 2x NAYY 4x300)",  # New name
+    #     "cs",  # Type remains the same
+    #     0.001552,  # Length (unchanged)
+    #     0.1 / 2,  # resistance for parallel cables
+    #     0.080425 / 2,  # Halve reactance for parallel cables
+    #     829.999394 * 2,  # Double capacitance for parallel cables
+    #     0.838  # Max current capacity in kA (2x NAYY 4x300 ~ 450 A per cable)
+    # ]
 
     # Set ext_grid vm_pu to 1.0
     net.ext_grid['vm_pu'] = 1.0
@@ -582,8 +582,8 @@ def setup_grid_IAS(season):
         data_source=ds_scaled_household_profiles_Q
     )
     # Set p_mw of load with index 21 to 0
-    net.load.loc[22, 'p_mw'] = 0
-    net.load.loc[22, 'q_mvar'] = 0
+    #net.load.loc[22, 'p_mw'] = 0
+    #net.load.loc[22, 'q_mvar'] = 0
     ############################################################################################################
     # Add PV Generation
     ############################################################################################################
@@ -630,7 +630,7 @@ def setup_grid_IAS(season):
             pv_nodes.append(bus)
             pv_indices.append(pv_idx)
     # Explicitly set the sgen at bus 29 to 0
-    net.sgen.loc[net.sgen["bus"] == 29, "p_mw"] = 0
+    #net.sgen.loc[net.sgen["bus"] == 29, "p_mw"] = 0
 
     # Scale PV Profiles
     df_season_pv_prognosis = df_pv_prognosis[df_pv_prognosis['season'] == season].reset_index(drop=True)
@@ -660,21 +660,40 @@ def setup_grid_IAS(season):
     # Locate the specific household load at bus 29
     #hp_index = net.load[(net.load.bus == 29) & net.load['name'].str.startswith("LV4")].index
 
-    # Identify the loads at bus 29
-    loads_at_bus_29 = net.load[net.load.bus == 29]
+    # Identify the loads at the specified buses
+    aggregation_map = {
+        37: [35, 36, 38, 39],
+        42: [40, 41, 42, 43],
+        34: [29, 14, 9, 19],
+        33: [31, 27, 25, 20, 26],
+        24: [10, 6, 30, 13, 4],
+        32: [21, 8, 2, 3, 12, 1, 11],
+        16: [23, 18, 17, 5, 22, 28, 7]
+    }
 
-    # Select the load to modify (e.g., the one starting with "LV4")
-    target_load_index = loads_at_bus_29[loads_at_bus_29['name'].str.startswith("LV4")].index
+    # Target parent buses
+    target_buses = list(aggregation_map.keys())
 
-    if len(target_load_index) > 0:
-        # Modify only the first matched load (or modify logic as needed)
-        target_load_index = target_load_index[0]
-        
-        # Rename the load and make it controllable
-        net.load.at[target_load_index, 'name'] = net.load.at[target_load_index, 'name'].replace("LV4", "HP")
-        net.load.at[target_load_index, 'controllable'] = True
+    # Get loads at target buses whose names start with "LV4"
+    loads_at_target_buses = net.load[net.load.bus.isin(target_buses)]
+    target_load_indices = loads_at_target_buses[loads_at_target_buses['name'].str.startswith("LV4")].index
+
+    if len(target_load_indices) > 0:
+        for idx in target_load_indices:
+            bus = net.load.at[idx, 'bus']
+
+            # Get child buses for this parent bus
+            child_buses = aggregation_map.get(bus, [])
+
+            # Sum up p_mw values of loads at those child buses
+            total_child_load = net.load[net.load.bus.isin(child_buses)]['p_mw'].sum()
+
+            # Rename the load and make it controllable
+            net.load.at[idx, 'name'] = net.load.at[idx, 'name'].replace("LV4", "HP")
+            net.load.at[idx, 'controllable'] = True
+            net.load.at[idx, 'p_mw'] = total_child_load
     else:
-        print("No load at bus 29 matches the criteria to be renamed.")
+        print("No loads at the specified buses match the criteria to be renamed.")
 
     heatpump_loads = net.load[net.load['name'].str.startswith("HP.101")]
 
@@ -782,16 +801,16 @@ def setup_grid_IAS_variance(season):
         net.line.loc[idx, ['from_bus', 'to_bus']] = net.line.loc[idx, ['to_bus', 'from_bus']].values
 
     # Buses and lines to remove
-    buses_to_drop = [14, 34, 9, 19]
+    #buses_to_drop = [14, 34, 9, 19]
 
     # Filter loads connected to the specified buses
-    loads_to_modify = net.load[net.load.bus.isin(buses_to_drop)].index
+    #loads_to_modify = net.load[net.load.bus.isin(buses_to_drop)].index
 
     # Set the 'p_mw' and 'q_mvar' columns to zero
-    net.load.loc[loads_to_modify, ['p_mw', 'q_mvar']] = 0
+    #net.load.loc[loads_to_modify, ['p_mw', 'q_mvar']] = 0
 
     # Rename the loads to "DEACTIVATE"
-    net.load.loc[loads_to_modify, 'name'] = "DEACTIVATE"
+    #net.load.loc[loads_to_modify, 'name'] = "DEACTIVATE"
 
     # Update line at index 9 to represent 2 parallel NAYY 4x300 cables
     line_idx = 9

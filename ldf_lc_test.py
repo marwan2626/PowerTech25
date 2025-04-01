@@ -10,9 +10,8 @@ net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const
 for t in time_steps:
     electricity_price[t] = 100
 
-#results = ldf.manual_lindistflow_timeseries(time_steps, net)
-drcc_results = drcc.solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, T_amb)
+results = ldf.manual_lindistflow_timeseries(time_steps, net)
+#drcc_results = drcc.solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, T_amb)
 
-#pl.plot_branch_current(results)
-#pl.plot_ldf_results_plotly(results)
-pl.plot_ldf_drcc_results_plotly(drcc_results)
+pl.plot_ldf_results_plotly(results)
+#pl.plot_ldf_drcc_results_plotly(drcc_results)
