@@ -656,9 +656,6 @@ def setup_grid_IAS(season):
     ############################################################################################################
     # Add Heat Pump
     ############################################################################################################
-    # Locate the load at bus 29
-    # Locate the specific household load at bus 29
-    #hp_index = net.load[(net.load.bus == 29) & net.load['name'].str.startswith("LV4")].index
 
     # Identify the loads at the specified buses
     aggregation_map = {
@@ -800,30 +797,6 @@ def setup_grid_IAS_variance(season):
     for idx in line_indices:
         net.line.loc[idx, ['from_bus', 'to_bus']] = net.line.loc[idx, ['to_bus', 'from_bus']].values
 
-    # Buses and lines to remove
-    #buses_to_drop = [14, 34, 9, 19]
-
-    # Filter loads connected to the specified buses
-    #loads_to_modify = net.load[net.load.bus.isin(buses_to_drop)].index
-
-    # Set the 'p_mw' and 'q_mvar' columns to zero
-    #net.load.loc[loads_to_modify, ['p_mw', 'q_mvar']] = 0
-
-    # Rename the loads to "DEACTIVATE"
-    #net.load.loc[loads_to_modify, 'name'] = "DEACTIVATE"
-
-    # Update line at index 9 to represent 2 parallel NAYY 4x300 cables
-    line_idx = 9
-    net.line.loc[line_idx, ['name', 'type', 'length_km', 'r_ohm_per_km', 'x_ohm_per_km', 'c_nf_per_km', 'max_i_ka']] = [
-        "LV4.101 Line 7 (Parallel 2x NAYY 4x300)",  # New name
-        "cs",  # Type remains the same
-        0.001552,  # Length (unchanged)
-        0.1 / 2,  # resistance for parallel cables
-        0.080425 / 2,  # Halve reactance for parallel cables
-        829.999394 * 2,  # Double capacitance for parallel cables
-        0.838  # Max current capacity in kA (2x NAYY 4x300 ~ 450 A per cable)
-    ]
-
     # Set ext_grid vm_pu to 1.0
     net.ext_grid['vm_pu'] = 1.0
 
@@ -833,31 +806,38 @@ def setup_grid_IAS_variance(season):
     ############################################################################################################
     # Add Household Loads
     ############################################################################################################
+    # Load the normalized household profile
+    df_household_prognosis = pd.read_csv("householdPrognosis1h.csv", sep=';')
+    df_season_household_prognosis = df_household_prognosis[df_household_prognosis['season'] == season].reset_index(drop=True)
+    df_season_household_prognosis[['meanP', 'meanQ']] = df_season_household_prognosis[['meanP', 'meanQ']].astype(float)
+    df_season_household_prognosis['P_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanP'] / df_household_prognosis['meanP'].max()
+    df_season_household_prognosis['Q_HOUSEHOLD_NORM'] = df_season_household_prognosis['meanQ'] / df_household_prognosis['meanP'].max()
+    time_steps = df_season_household_prognosis.index
+
 
     # Exclude the heat pump load index from the household loads
     household_loads = net.load[(net.load['name'].str.startswith("LV4.101")) & (net.load.index != 21)]
-    for load_idx in household_loads.index:
-        net.load.at[load_idx, 'p_mw'] = 0
-        net.load.at[load_idx, 'q_mvar'] = 0
+    household_scaling_factors_P = household_loads['p_mw'].values  # Extract only active power scaling
 
     # Set p_mw of load with index 21 to 0
-    net.load.loc[22, 'p_mw'] = 0
-    net.load.loc[22, 'q_mvar'] = 0
+    #net.load.loc[22, 'p_mw'] = 0
+    #net.load.loc[22, 'q_mvar'] = 0
     ############################################################################################################
     # Add PV Generation
     ############################################################################################################
     # Load PV Prognosis Data
     df_pv_prognosis = pd.read_csv("pvPrognosis1h.csv", sep=';')
+    df_pv_prognosis['meanP'] = df_pv_prognosis['meanP'].clip(lower=0)
     df_pv_prognosis['stdP'] = df_pv_prognosis['stdP'].clip(lower=0)
 
 
     
     # Define PV Capacity Categories
     pv_capacity_mapping = {
-        (0, 0.003): 4,  # 15 kWp
-        (0.003, 0.006): 6,  # 25 kWp
-        (0.006, 0.012): 10,  # 50 kWp
-        (0.012, float('inf')): 15  # 100 kWp
+        (0.00001, 0.003): 10,  # 0 kWp
+        (0.003, 0.006): 15,  # 4 kWp
+        (0.006, 0.012): 20,  # 6 kWp
+        (0.012, float('inf')): 25  # 10 kWp
     }
 
     # Function to determine PV capacity
@@ -888,6 +868,8 @@ def setup_grid_IAS_variance(season):
             }, name=net.sgen.shape[0]))            
             pv_nodes.append(bus)
             pv_indices.append(pv_idx)
+    # Explicitly set the sgen at bus 29 to 0
+    #net.sgen.loc[net.sgen["bus"] == 29, "p_mw"] = 0
 
     # Scale PV Profiles
     df_season_pv_prognosis = df_pv_prognosis[df_pv_prognosis['season'] == season].reset_index(drop=True)
@@ -917,21 +899,40 @@ def setup_grid_IAS_variance(season):
     # Locate the specific household load at bus 29
     #hp_index = net.load[(net.load.bus == 29) & net.load['name'].str.startswith("LV4")].index
 
-    # Identify the loads at bus 29
-    loads_at_bus_29 = net.load[net.load.bus == 29]
+    # Identify the loads at the specified buses
+    aggregation_map = {
+        37: [35, 36, 38, 39],
+        42: [40, 41, 42, 43],
+        34: [29, 14, 9, 19],
+        33: [31, 27, 25, 20, 26],
+        24: [10, 6, 30, 13, 4],
+        32: [21, 8, 2, 3, 12, 1, 11],
+        16: [23, 18, 17, 5, 22, 28, 7]
+    }
 
-    # Select the load to modify (e.g., the one starting with "LV4")
-    target_load_index = loads_at_bus_29[loads_at_bus_29['name'].str.startswith("LV4")].index
+    # Target parent buses
+    target_buses = list(aggregation_map.keys())
 
-    if len(target_load_index) > 0:
-        # Modify only the first matched load (or modify logic as needed)
-        target_load_index = target_load_index[0]
-        
-        # Rename the load and make it controllable
-        net.load.at[target_load_index, 'name'] = net.load.at[target_load_index, 'name'].replace("LV4", "HP")
-        net.load.at[target_load_index, 'controllable'] = True
+    # Get loads at target buses whose names start with "LV4"
+    loads_at_target_buses = net.load[net.load.bus.isin(target_buses)]
+    target_load_indices = loads_at_target_buses[loads_at_target_buses['name'].str.startswith("LV4")].index
+
+    if len(target_load_indices) > 0:
+        for idx in target_load_indices:
+            bus = net.load.at[idx, 'bus']
+
+            # Get child buses for this parent bus
+            child_buses = aggregation_map.get(bus, [])
+
+            # Sum up p_mw values of loads at those child buses
+            total_child_load = net.load[net.load.bus.isin(child_buses)]['p_mw'].sum()
+
+            # Rename the load and make it controllable
+            net.load.at[idx, 'name'] = net.load.at[idx, 'name'].replace("LV4", "HP")
+            net.load.at[idx, 'controllable'] = True
+            net.load.at[idx, 'p_mw'] = total_child_load
     else:
-        print("No load at bus 29 matches the criteria to be renamed.")
+        print("No loads at the specified buses match the criteria to be renamed.")
 
     heatpump_loads = net.load[net.load['name'].str.startswith("HP.101")]
 
@@ -939,19 +940,17 @@ def setup_grid_IAS_variance(season):
     df_heatpump_prognosis = pd.read_csv("heatpumpPrognosis1h.csv", sep=';')
     df_season_heatpump_prognosis = df_heatpump_prognosis[df_heatpump_prognosis['season'] == season].reset_index(drop=True)
         
-    # Process load profile for bus 1
-    # df_season_heatpump_prognosis['meanP'] = df_season_heatpump_prognosis['meanP'].str.replace(",", ".").astype(float)
-    # df_season_heatpump_prognosis['stdP'] = df_season_heatpump_prognosis['stdP'].str.replace(",", ".").astype(float)
-    # df_season_heatpump_prognosis['meanQ'] = df_season_heatpump_prognosis['meanQ'].str.replace(",", ".").astype(float)
-    # df_season_heatpump_prognosis['stdQ'] = df_season_heatpump_prognosis['stdQ'].str.replace(",", ".").astype(float)
+
     df_season_heatpump_prognosis['meanP'] = df_season_heatpump_prognosis['meanP'].astype(float)
     df_season_heatpump_prognosis['stdP'] = df_season_heatpump_prognosis['stdP'].astype(float)
     df_season_heatpump_prognosis['meanQ'] = df_season_heatpump_prognosis['meanQ'].astype(float)
     df_season_heatpump_prognosis['stdQ'] = df_season_heatpump_prognosis['stdQ'].astype(float)
         
-    df_season_heatpump_prognosis['meanP_NORM'] = df_season_heatpump_prognosis['stdP'] / df_heatpump_prognosis['meanP'].max()
+    df_season_heatpump_prognosis['meanP_NORM'] = df_season_heatpump_prognosis['meanP'] / df_heatpump_prognosis['meanP'].max()
+    df_season_heatpump_prognosis['stdP_NORM'] = df_season_heatpump_prognosis['stdP'] / df_heatpump_prognosis['meanP'].max()
     df_season_heatpump_prognosis['p_mw'] = df_season_heatpump_prognosis['meanP_NORM']
-    df_season_heatpump_prognosis['meanQ_NORM'] = df_season_heatpump_prognosis['stdQ'] / df_heatpump_prognosis['meanQ'].max()
+    df_season_heatpump_prognosis['meanQ_NORM'] = df_season_heatpump_prognosis['meanQ'] / df_heatpump_prognosis['meanQ'].max()
+    df_season_heatpump_prognosis['stdQ_NORM'] = df_season_heatpump_prognosis['stdQ'] / df_heatpump_prognosis['meanQ'].max()
     df_season_heatpump_prognosis['q_mvar'] = df_season_heatpump_prognosis['meanQ_NORM']
 
 
@@ -964,14 +963,14 @@ def setup_grid_IAS_variance(season):
 
     # Create a scaled heatpump profile DataFrame
     df_season_heatpump_prognosis_scaled = pd.DataFrame(
-        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
+        df_season_heatpump_prognosis['stdP_NORM'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
         columns=heatpump_loads.index
     )
-    Q_scaling = 0.5337
+    Q_scaling = par.Q_scaling
     #print("Q_scaling",Q_scaling)
 
     df_season_heatpump_prognosis_scaled_Q = pd.DataFrame(
-        df_season_heatpump_prognosis['p_mw'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling * Q_scaling,
+        df_season_heatpump_prognosis['stdP_NORM'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * -1 * par.hp_scaling * Q_scaling,
         columns=heatpump_loads.index
 )
 
@@ -998,5 +997,22 @@ def setup_grid_IAS_variance(season):
         data_source=ds_scaled_heatpump_profiles_Q
     )
 
+    for load_idx in household_loads.index:
+        net.load.at[load_idx, 'p_mw'] = 0
+        net.load.at[load_idx, 'q_mvar'] = 0
 
-    return net
+    ############################################################################################################
+    # Ambient Temperature
+    ############################################################################################################
+    temperature_file = f"temperature_{season}1h.csv"
+
+    try:
+        T_amb = pd.read_csv(temperature_file)['APPARENT_TEMPERATURE:TOTAL'] + 273.15
+    except FileNotFoundError:
+        print(f"Warning: Temperature file '{temperature_file}' not found.")
+        T_amb = None  # Set to None if missing
+
+
+
+
+    return net, time_steps, const_pv, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb
