@@ -19,27 +19,7 @@ import pandapower as pp
 
 # Set up the grid and time series data
 net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, electricity_price = gd.setup_grid_IAS(season='winter')
-#pp.runpp(net)
 
-#net, const_variance = gd.setup_grid_powertech25_variance(net,df_season_heatpump_prognosis,heatpump_scaling_factors_df)
-""" print(f"Type of net.controller: {type(net.controller)}")
-print("Contents of net.controller:")
-print(net.controller)
-# Print details of each ConstController
-if hasattr(net, 'controller') and not net.controller.empty:
-    print("Details of ConstControllers:")
-    for idx, controller in enumerate(net.controller['object'], start=1):
-        print(f"Controller {idx}:")
-        print(f"  Element: {controller.element}")
-        print(f"  Variable: {controller.variable}")
-        print(f"  Element Index: {controller.element_index}")
-        print(f"  Profile Name: {controller.profile_name}")
-else:
-    print("No controllers found in the net.") """
-#net, df_pv, df, pv_generators, const_load, const_pv = gd.setup_grid()
-#time_steps = df_pv.index
-#print(f"Time steps: {time_steps}")
-# Create the output writer
 from pandapower.timeseries import OutputWriter
 
 def create_output_writer(net, time_steps, output_dir):

@@ -64,6 +64,8 @@ def run_lindistflow(net, downstream_map, P_mw, Q_mw, Ybus, A, Z):
     X = np.imag(Zbus_reduced)
 
     V_reduced = np.ones(len(S_pu_reduced)) + R @ np.real(S_pu_reduced) + X @ np.imag(S_pu_reduced)
+    V_var_reduced = R @ np.real(S_pu_reduced) + X @ np.imag(S_pu_reduced)
+
 
     # Reconstruct full voltage vector
     V_nodes = np.ones(len(net.bus))
@@ -72,6 +74,15 @@ def run_lindistflow(net, downstream_map, P_mw, Q_mw, Ybus, A, Z):
         if i != slack_bus_index:
             V_nodes[i] = V_reduced[idx]
             idx += 1
+
+    # Reconstruct full voltage variance vector (slack = 0)
+    V_var_full = np.zeros(len(net.bus))
+    idx = 0
+    for i in range(len(V_var_full)):
+        if i != slack_bus_index:
+            V_var_full[i] = V_var_reduced[idx]
+            idx += 1
+
 
     # Compute accumulated power flows
     P_accumulated, Q_accumulated = accumulate_downstream_power(A, P_mw, Q_mw, net, downstream_map)
@@ -169,6 +180,7 @@ def run_lindistflow(net, downstream_map, P_mw, Q_mw, Ybus, A, Z):
     # Create final results dictionary
     results = {
         'V_magnitude': pd.Series(np.abs(V_nodes), index=net.bus.index),  # p.u.
+        'V_variance': pd.Series(V_var_full, index=net.bus.index),  # p.u.^2
         'P_node': pd.Series(P_mw, index=net.bus.index),  # MW
         'Q_node': pd.Series(Q_mw, index=net.bus.index),  # MVar
         'P_line_flow': pd.Series(P_branch, index=net.line.index),  # MW
@@ -187,6 +199,7 @@ def calculate_variance_propagation(time_steps, net):
     results = {
         "time_step": [],
         "V_magnitude": [],
+        "V_variance": [],
         "P_node": [],
         "Q_node": [],
         "line_pl_mw": [],
@@ -245,6 +258,7 @@ def calculate_variance_propagation(time_steps, net):
 
         results["time_step"].append(t)
         results["V_magnitude"].append(flow_results["V_magnitude"])
+        results["V_variance"].append(flow_results["V_variance"])
         results["P_node"].append([-p for p in flow_results["P_node"]])  # Reverse direction
         results["Q_node"].append([-q for q in flow_results["Q_node"]])  # Reverse direction
         results["line_pl_mw"].append([-p for p in flow_results["P_line_flow"]])  # Reverse direction
@@ -258,6 +272,7 @@ def calculate_variance_propagation(time_steps, net):
 
     # Convert results into DataFrames
     V_magnitude_df = pd.DataFrame(results["V_magnitude"], index=results["time_step"], columns=net.bus.index)
+    V_variance_df = pd.DataFrame(results["V_variance"], index=results["time_step"], columns=net.bus.index)
 
     P_node_df = pd.DataFrame(results["P_node"], index=results["time_step"], columns=net.bus.index)
     Q_node_df = pd.DataFrame(results["Q_node"], index=results["time_step"], columns=net.bus.index)
@@ -281,6 +296,7 @@ def calculate_variance_propagation(time_steps, net):
     # Combine all DataFrames
     results_df = pd.concat({
         "V_magnitude": V_magnitude_df,
+        "V_variance": V_variance_df,
         "P_node": P_node_df,
         "Q_node": Q_node_df,
         "load_p_mw": load_p_mw_df,
@@ -303,28 +319,14 @@ def calculate_variance_propagation(time_steps, net):
 def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, T_amb):
     #variance_net= gd.setup_grid_IAS_variance(season)
     #var_results = calculate_variance_propagation(time_steps, variance_net)
-    #var_p_mw_t0 = var_results.loc[0, ("line_pl_mw")]
-    #print(f"Variance Propagation Results at time 0: {var_p_mw_t0}")
-    # Filter all line_pl_mw values across all time steps
-    #var_P_line_dict = {}
-    #var_P_trafo_dict = {}
 
-    # for time_step in var_results.index:
-    #     # Access the line_pl_mw and transformer_pl_mw for the current time step
-    #     var_P_line = var_results.loc[time_step, ("line_pl_mw")]
-    #     var_P_trafo = var_results.loc[time_step, ("transformer_pl_mw")]
+    print(f"calculating variance propagation")
+    variance_net = gd.setup_grid_IAS_variance(season='winter')
+    results_variance = calculate_variance_propagation(time_steps, variance_net)
+    print(f"variance propagation calculated")
 
-    #     # Apply the filter: set values less than 1e-6 to 0
-    #     var_P_line = var_P_line.where(var_P_line.abs() >= 1e-6, 0)
-    #     #var_P_trafo = var_P_trafo.where(var_P_trafo.abs() >= 1e-6, 0)
+    k_epsilon = np.sqrt((1 - par.epsilon) / par.epsilon)
 
-    #     # Save the filtered results in a nested dictionary
-    #     var_P_line_dict[time_step] = var_P_line.to_dict()
-    #     var_P_trafo_dict[time_step] = var_P_trafo.to_dict()
-        
-    # Access the results as var_P_line_dict[t][line]
-    #print(f"Var Line Value, {var_P_line_dict}")
-    #print(f"Var Trafo Value, {var_P_trafo_dict}")
 
     pd.set_option('display.precision', 10)
     model = gp.Model("opf_with_ldf_lc")
@@ -428,7 +430,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     # Add thermal storage variables
     ts_capacity_vars = model.addVars(
         flexible_load_buses,
-        lb=0.0001,
+        lb=0.00001,
         name=f'ts_capacity'
     )
 
@@ -440,11 +442,9 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
     # Add variables for each time step
     for t in time_steps:
-        # Update const_pv and const_load for this time step
-        const_load_heatpump.time_step(net, time=t)
-        const_load_household_P.time_step(net, time=t)
-        const_load_household_Q.time_step(net, time=t)
-        const_pv.time_step(net, time=t)
+        if not net.controller.empty:
+            for _, controller in net.controller.iterrows():
+                controller.object.time_step(net, time=t)
 
 
         # Initialize dictionaries for time-synchronized loads
@@ -472,6 +472,16 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
                 non_flexible_time_synchronized_loads_Q[t][bus] = (
                     non_flexible_time_synchronized_loads_Q[t].get(bus, 0.0) + load.q_mvar
                 )
+
+        print(f"\n--- Time Step {t} | Flexible Load (P) by Bus ---")
+        for bus in sorted(flexible_time_synchronized_loads_P[t].keys()):
+            val = flexible_time_synchronized_loads_P[t][bus]
+            if abs(val) > 1e-6:
+                print(f"Bus {bus}: {val:.5f} MW")
+        print(f"\n[DEBUG] --- Raw heatpump load values at time {t} ---")
+        for load in net.load.itertuples():
+            if load.controllable:
+                print(f"Bus {load.bus}: {load.p_mw:.5f} MW")
 
 
         # Ensure all buses have an entry, even if no loads are connected
@@ -686,25 +696,22 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
         # Map V_reduced_vars to V_vars for non-slack buses
         for bus in non_slack_buses:
                 model.addConstr(V_vars[t, bus] == V_reduced_vars[t, bus], name=f"voltage_assignment_{t}_{bus}")
+
+                tight_v_min = 0.95 + par.DRCC_FLG * k_epsilon * results_variance.loc[t, ("V_variance", bus)]
+                tight_v_max = 1.05 - par.DRCC_FLG * k_epsilon * results_variance.loc[t, ("V_variance", bus)]
+
+                model.addConstr(V_vars[t, bus] >= tight_v_min, name=f"voltage_min_drcc_{t}_{bus}")
+                model.addConstr(V_vars[t, bus] <= tight_v_max, name=f"voltage_max_drcc_{t}_{bus}")
         
+
         # model.addConstr(
-        #     ext_grid_import_P_vars[t] - ext_grid_export_P_vars[t] ==
-        #     gp.quicksum(P_injected[bus] for bus in net.bus.index),
-        #     name=f"P_balance_slack_{t}"
+        #     (ext_grid_import_P_vars[t] * ext_grid_export_P_vars[t]) == 0, 
+        #     name=f"import_export_exclusivity_P_{t}"
         # )
         # model.addConstr(
-        #     ext_grid_import_Q_vars[t] - ext_grid_export_Q_vars[t] ==
-        #     gp.quicksum(Q_injected[bus] for bus in net.bus.index),
-        #     name=f"Q_balance_slack_{t}"
-        #)
-        model.addConstr(
-            (ext_grid_import_P_vars[t] * ext_grid_export_P_vars[t]) == 0, 
-            name=f"import_export_exclusivity_P_{t}"
-        )
-        model.addConstr(
-            (ext_grid_import_Q_vars[t] * ext_grid_export_Q_vars[t]) == 0, 
-            name=f"import_export_exclusivity_Q_{t}"
-        )
+        #     (ext_grid_import_Q_vars[t] * ext_grid_export_Q_vars[t]) == 0, 
+        #     name=f"import_export_exclusivity_Q_{t}"
+        # )
 
 
         # Accumulate power for each bus (excluding slack)
@@ -780,12 +787,16 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             # Define line rating based on voltage and current limits
             S_rated_line = np.sqrt(3) * line.max_i_ka * net.bus.at[from_bus, 'vn_kv']
 
+            tight_line_limit = (par.DRCC_FLG * k_epsilon * results_variance.loc[t, ("line_pl_mw", line_idx)])/par.hp_pf
+            model.addConstr(S_branch_vars[t, line_idx] <= (0.8*S_rated_line)-tight_line_limit, name=f"S_branch_limit_{t}_{line_idx}")
+
             model.addConstr(Line_loading_vars[t, line_idx] == (S_branch_vars[t, line_idx] / S_rated_line) * 100, name=f"line_loading_{t}_{line_idx}")
 
-            model.addConstr(
-            Line_loading_vars[t, line_idx] <= 80,  # Enforce 80% limit
-            name=f"line_loading_limit_{t}_{line_idx}"
-            )
+            
+            # model.addConstr(
+            # Line_loading_vars[t, line_idx] <= tight_line_limit,  # Enforce 80% limit
+            # name=f"line_loading_limit_{t}_{line_idx}"
+            # )
             
 
             # # Compute line loading percentage as a linear expression
@@ -827,12 +838,15 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
             # Compute transformer loading percentage
             S_rated = net.trafo.sn_mva.iloc[trafo_idx]
+            tight_trafo_limit = par.DRCC_FLG * k_epsilon * results_variance.loc[t, ("S_trafo", trafo_idx)]
+            model.addConstr(S_trafo_vars <= (0.8*S_rated)-tight_trafo_limit, name=f"S_trafo_limit_{t}_{trafo_idx}")
             model.addConstr(transformer_loading_perc_vars[t, trafo_idx] == (S_trafo_vars / S_rated) * 100, name=f"trafo_loading_{t}_{trafo_idx}")
 
-            model.addConstr(
-            transformer_loading_perc_vars[t, trafo_idx] <= 80,  # Enforce 80% limit
-            name=f"trafo_loading_limit_{t}_{trafo_idx}"
-        )
+
+        #     model.addConstr(
+        #     transformer_loading_perc_vars[t, trafo_idx] <= tight_trafo_limit,  # Enforce 80% limit
+        #     name=f"trafo_loading_limit_{t}_{trafo_idx}"
+        # )
 
         # External Grid Balance
         model.addConstr(

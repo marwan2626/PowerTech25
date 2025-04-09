@@ -525,6 +525,8 @@ def setup_grid_IAS(season):
 
     # Remove Sgen
     net.sgen.drop(net.sgen.index, inplace=True)
+    net.controller.drop(net.controller[net.controller["object"].apply(lambda x: isinstance(x, ConstControl.ConstControl))].index, inplace=True)
+
 
     ############################################################################################################
     # Add Household Loads
@@ -802,6 +804,7 @@ def setup_grid_IAS_variance(season):
 
     # Remove Sgen
     net.sgen.drop(net.sgen.index, inplace=True)
+    net.controller.drop(net.controller[net.controller["object"].apply(lambda x: isinstance(x, ConstControl.ConstControl))].index, inplace=True)
 
     ############################################################################################################
     # Add Household Loads
@@ -873,9 +876,12 @@ def setup_grid_IAS_variance(season):
 
     # Scale PV Profiles
     df_season_pv_prognosis = df_pv_prognosis[df_pv_prognosis['season'] == season].reset_index(drop=True)
-    df_season_pv_prognosis['P_PV_NORM'] = df_season_pv_prognosis['stdP'] / df_pv_prognosis['meanP'].max()
+    df_season_pv_prognosis['meanP_NORM'] = df_season_pv_prognosis['meanP'] / df_pv_prognosis['meanP'].max()
+    df_season_pv_prognosis['stdP_NORM'] = df_season_pv_prognosis['stdP'] / df_pv_prognosis['meanP'].max()
+    pv_std_scaling = df_pv_prognosis['stdP'].max()/df_pv_prognosis['meanP'].max()
+    print("pv_std_scaling",pv_std_scaling)
     scaled_pv_profiles = pd.DataFrame(
-        df_season_pv_prognosis['P_PV_NORM'].values[:, None] * np.array([net.sgen.loc[i, 'p_mw'] for i in pv_indices]) / par.hh_scaling,
+        ((df_season_pv_prognosis['stdP_NORM'].values[:, None]*pv_std_scaling)) * np.array([net.sgen.loc[i, 'p_mw'] for i in pv_indices]) / par.hh_scaling,
         columns=pv_indices
     )
     # Convert to DFData
@@ -936,6 +942,8 @@ def setup_grid_IAS_variance(season):
 
     heatpump_loads = net.load[net.load['name'].str.startswith("HP.101")]
 
+    household_loads = net.load[(net.load['name'].str.startswith("LV4.101"))]
+
     # Load the heatpump prognosis profile CSV and filter by season
     df_heatpump_prognosis = pd.read_csv("heatpumpPrognosis1h.csv", sep=';')
     df_season_heatpump_prognosis = df_heatpump_prognosis[df_heatpump_prognosis['season'] == season].reset_index(drop=True)
@@ -953,6 +961,9 @@ def setup_grid_IAS_variance(season):
     df_season_heatpump_prognosis['stdQ_NORM'] = df_season_heatpump_prognosis['stdQ'] / df_heatpump_prognosis['meanQ'].max()
     df_season_heatpump_prognosis['q_mvar'] = df_season_heatpump_prognosis['meanQ_NORM']
 
+    std_mean_scaling = df_heatpump_prognosis['stdP'].max()/df_heatpump_prognosis['meanP'].max()
+    print("std_mean_scaling",std_mean_scaling)
+
 
     # Generate heatpump scaling factors DataFrame
     heatpump_scaling_factors_df = pd.DataFrame({
@@ -963,14 +974,14 @@ def setup_grid_IAS_variance(season):
 
     # Create a scaled heatpump profile DataFrame
     df_season_heatpump_prognosis_scaled = pd.DataFrame(
-        df_season_heatpump_prognosis['stdP_NORM'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
+        ((df_season_heatpump_prognosis['stdP_NORM'].values[:, None]*std_mean_scaling)) * heatpump_scaling_factors_df['p_mw'].values * par.hp_scaling,
         columns=heatpump_loads.index
     )
     Q_scaling = par.Q_scaling
     #print("Q_scaling",Q_scaling)
 
     df_season_heatpump_prognosis_scaled_Q = pd.DataFrame(
-        df_season_heatpump_prognosis['stdP_NORM'].values[:, None] * heatpump_scaling_factors_df['p_mw'].values * -1 * par.hp_scaling * Q_scaling,
+        ((df_season_heatpump_prognosis['stdP_NORM'].values[:, None]*std_mean_scaling)) * heatpump_scaling_factors_df['p_mw'].values * -1 * par.hp_scaling * Q_scaling,
         columns=heatpump_loads.index
 )
 
@@ -1001,18 +1012,4 @@ def setup_grid_IAS_variance(season):
         net.load.at[load_idx, 'p_mw'] = 0
         net.load.at[load_idx, 'q_mvar'] = 0
 
-    ############################################################################################################
-    # Ambient Temperature
-    ############################################################################################################
-    temperature_file = f"temperature_{season}1h.csv"
-
-    try:
-        T_amb = pd.read_csv(temperature_file)['APPARENT_TEMPERATURE:TOTAL'] + 273.15
-    except FileNotFoundError:
-        print(f"Warning: Temperature file '{temperature_file}' not found.")
-        T_amb = None  # Set to None if missing
-
-
-
-
-    return net, time_steps, const_pv, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb
+    return net
