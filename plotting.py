@@ -88,38 +88,3 @@ plt.xlim(0, 100)
 plt.tight_layout()
 plt.show()
 
-
-def plot_ldf_lc_results(results):
-    """Plot LDF-LC power flow results using Plotly with an interactive cursor."""
-    
-    # Ensure time_step is treated as an index
-    results = results.set_index('time_step')
-
-    # Create separate figures for each parameter
-    figures = {}
-
-    for col in results.columns:
-        fig = go.Figure()
-
-        # Add trace for each column in results
-        fig.add_trace(go.Scatter(
-            x=results.index, 
-            y=results[col], 
-            mode='lines+markers', 
-            name=col,
-            hoverinfo='x+y'
-        ))
-
-        # Set layout
-        fig.update_layout(
-            title=f"LDF-LC Results: {col}",
-            xaxis_title="Time Step",
-            yaxis_title=col,
-            hovermode="x",  # Enables cursor-based interactivity
-            template="plotly_dark"  # Dark mode for better visibility (optional)
-        )
-
-        # Store the figure
-        figures[col] = fig
-    
-    return figures

@@ -496,30 +496,6 @@ def setup_grid_IAS(season):
     for idx in line_indices:
         net.line.loc[idx, ['from_bus', 'to_bus']] = net.line.loc[idx, ['to_bus', 'from_bus']].values
 
-    # Buses and lines to remove
-    #buses_to_drop = [14, 34, 9, 19]
-
-    # Filter loads connected to the specified buses
-    #loads_to_modify = net.load[net.load.bus.isin(buses_to_drop)].index
-
-    # Set the 'p_mw' and 'q_mvar' columns to zero
-    #net.load.loc[loads_to_modify, ['p_mw', 'q_mvar']] = 0
-
-    # Rename the loads to "DEACTIVATE"
-    #net.load.loc[loads_to_modify, 'name'] = "DEACTIVATE"
-
-    # Update line at index 9 to represent 2 parallel NAYY 4x300 cables
-    # line_idx = 9
-    # net.line.loc[line_idx, ['name', 'type', 'length_km', 'r_ohm_per_km', 'x_ohm_per_km', 'c_nf_per_km', 'max_i_ka']] = [
-    #     "LV4.101 Line 7 (Parallel 2x NAYY 4x300)",  # New name
-    #     "cs",  # Type remains the same
-    #     0.001552,  # Length (unchanged)
-    #     0.1 / 2,  # resistance for parallel cables
-    #     0.080425 / 2,  # Halve reactance for parallel cables
-    #     829.999394 * 2,  # Double capacitance for parallel cables
-    #     0.838  # Max current capacity in kA (2x NAYY 4x300 ~ 450 A per cable)
-    # ]
-
     # Set ext_grid vm_pu to 1.0
     net.ext_grid['vm_pu'] = 1.0
 
@@ -785,7 +761,7 @@ def setup_grid_IAS(season):
         electricity_price = None  # Set to None if missing
 
 
-    return net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, heatpump_scaling_factors_df, T_amb, electricity_price
+    return net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, df_season_pv_prognosis ,heatpump_scaling_factors_df, T_amb, electricity_price
 
 
 
@@ -879,7 +855,7 @@ def setup_grid_IAS_variance(season):
     df_season_pv_prognosis['meanP_NORM'] = df_season_pv_prognosis['meanP'] / df_pv_prognosis['meanP'].max()
     df_season_pv_prognosis['stdP_NORM'] = df_season_pv_prognosis['stdP'] / df_pv_prognosis['meanP'].max()
     pv_std_scaling = df_pv_prognosis['stdP'].max()/df_pv_prognosis['meanP'].max()
-    print("pv_std_scaling",pv_std_scaling)
+    #print("pv_std_scaling",pv_std_scaling)
     scaled_pv_profiles = pd.DataFrame(
         ((df_season_pv_prognosis['stdP_NORM'].values[:, None]*pv_std_scaling)) * np.array([net.sgen.loc[i, 'p_mw'] for i in pv_indices]) / par.hh_scaling,
         columns=pv_indices
@@ -962,7 +938,7 @@ def setup_grid_IAS_variance(season):
     df_season_heatpump_prognosis['q_mvar'] = df_season_heatpump_prognosis['meanQ_NORM']
 
     std_mean_scaling = df_heatpump_prognosis['stdP'].max()/df_heatpump_prognosis['meanP'].max()
-    print("std_mean_scaling",std_mean_scaling)
+    #print("std_mean_scaling",std_mean_scaling)
 
 
     # Generate heatpump scaling factors DataFrame

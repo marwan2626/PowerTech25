@@ -574,11 +574,11 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
     P_trafo_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="P_trafo")
     Q_trafo_vars = model.addVars(time_steps, net.line.index, lb=-GRB.INFINITY, name="Q_trafo")
-    S_trafo_vars = model.addVars(time_steps, net.line.index, lb=0, name="S_trafo")  
+    #S_trafo_vars = model.addVars(time_steps, net.line.index, lb=0, name="S_trafo")  
 
     #Transformer loading percentage
     transformer_loading_perc_vars = model.addVars(time_steps, net.trafo.index, lb=0, name="Trafo_loading_percent")
-    Line_loading_vars = model.addVars(time_steps, net.line.index, name="Line_loading")
+    #Line_loading_vars = model.addVars(time_steps, net.line.index, name="Line_loading")
     # Initialize as a structured dictionary of linear expressions
     Line_loading_expr = {}
     # Define expressions for each time step and line
@@ -875,10 +875,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             ext_grid_export_P_results[t] = ext_grid_export_P_vars[t].x
             ext_grid_export_Q_results[t] = ext_grid_export_Q_vars[t].x
             V_results[t] = {bus: V_vars[t, bus].x for bus in net.bus.index}
-            transformer_loading_results[t] = {
-                trafo_idx: transformer_loading_perc_vars[t, trafo_idx].x for trafo_idx in net.trafo.index
-            }
-            
+
             # Extract load results as **flat dictionaries**
             flexible_load_P_results[t] = {bus: flexible_load_P_vars[t][bus].x for bus in flexible_load_buses}
             flexible_load_Q_results[t] = {bus: flexible_load_Q_vars[t][bus].x for bus in flexible_load_buses}
@@ -893,27 +890,35 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
 
             ts_capacity_results['capacity'] = {bus: ts_capacity_vars[bus].x for bus in flexible_load_buses}
 
+            transformer_loading_results[t] = {
+                trafo_idx: (
+                    np.sqrt(
+                        P_trafo_vars[t, trafo_idx].x ** 2 + Q_trafo_vars[t, trafo_idx].x ** 2
+                    ) / net.trafo.at[trafo_idx, 'sn_mva']
+                ) * 100
+                for trafo_idx in net.trafo.index
+            }
+
             line_pl_results[t] = {
                 line_idx: -1 * P_branch_vars[t, line_idx].x for line_idx in net.line.index
             }
             line_ql_results[t] = {
                 line_idx: -1 * Q_branch_vars[t, line_idx].x for line_idx in net.line.index
             }
-            line_loading_results[t] = {
-                line_idx: Line_loading_vars[t, line_idx].x for line_idx in net.line.index
-            }
 
-            # line_loading_results[t] = {
-            #     line_idx: (
-            #         np.sqrt(P_branch_vars[t, line_idx].x**2 + Q_branch_vars[t, line_idx].x**2) /
-            #         (np.sqrt(3) * V_results[t][net.line.at[line_idx, 'from_bus']] * net.bus.at[net.line.at[line_idx, 'from_bus'], 'vn_kv'])
-            #     ) * 100
-            #     for line_idx in net.line.index
-            # }
+            line_loading_results[t] = {
+                line_idx: (
+                    (
+                    np.sqrt(P_branch_vars[t, line_idx].x ** 2 + Q_branch_vars[t, line_idx].x ** 2) /
+                    (np.sqrt(3) * V_results[t][net.line.at[line_idx, 'from_bus']] * net.bus.at[net.line.at[line_idx, 'from_bus'], 'vn_kv'])
+                    ) / net.line.at[line_idx, 'max_i_ka']
+                ) * 100
+                for line_idx in net.line.index
+            }
 
             line_current_results[t] = {
                 line_idx: (
-                    S_branch_vars[t, line_idx].x /
+                    np.sqrt(P_branch_vars[t, line_idx].x ** 2 + Q_branch_vars[t, line_idx].x ** 2) /
                     (np.sqrt(3) * V_results[t][net.line.at[line_idx, 'from_bus']] * net.bus.at[net.line.at[line_idx, 'from_bus'], 'vn_kv'])
                 )
                 for line_idx in net.line.index
@@ -946,8 +951,15 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
         # # Save the results to a file
         # if results is not None:
         #     rs.save_optim_results(results, "drcc_results.pkl")
+        
+        # Save the results to a file
+        if results is not None:
+            filename = f"drcc_results_drcc_{par.DRCC_FLG}_{par.epsilon}.pkl"
+            rs.save_optim_results(results, filename)
 
         print(f"thermal storage capacity: {ts_capacity_results['capacity']}")
+        
+        return results
         
         return results
     

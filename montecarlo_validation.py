@@ -16,10 +16,12 @@ import pandas as pd
 import pandapower as pp
 from joblib import Parallel, delayed
 from tqdm import tqdm
+from pandapower.control import ConstControl
 
 #### SCRIPTS ####
 import parameters as par
 import results as rs
+
 
 ###############################################################################
 ## Generate Samples ##
@@ -101,6 +103,82 @@ def generate_samples(df_season_heatpump_prognosis):
         sample_profiles.append(df_sample)
 
     return sample_profiles
+
+def generate_samples_ldf(df_season_heatpump_prognosis, df_season_pv_prognosis):
+    import numpy as np
+    import pandas as pd
+
+    # Normalize heat pump profile
+    max_mean_hp = df_season_heatpump_prognosis['meanP'].max()
+    df_season_heatpump_prognosis['meanP_norm'] = df_season_heatpump_prognosis['meanP'] / max_mean_hp
+    df_season_heatpump_prognosis['stdP_norm'] = df_season_heatpump_prognosis['stdP'] / max_mean_hp
+
+    meanP_hp = df_season_heatpump_prognosis['meanP_norm'].values
+    stdP_hp = df_season_heatpump_prognosis['stdP_norm'].values
+
+    # Normalize PV profile
+    max_mean_pv = df_season_pv_prognosis['meanP'].max()
+    df_season_pv_prognosis['meanP_norm'] = df_season_pv_prognosis['meanP'] / max_mean_pv
+    df_season_pv_prognosis['stdP_norm'] = df_season_pv_prognosis['stdP'] / max_mean_pv
+
+    meanP_pv = df_season_pv_prognosis['meanP_norm'].values
+    stdP_pv = df_season_pv_prognosis['stdP_norm'].values
+
+    timesteps = df_season_heatpump_prognosis.index  # Assume same for PV
+    n_samples = par.N_MC  # Number of Monte Carlo samples
+
+    sample_profiles = []
+
+    for _ in range(n_samples):
+        distribution_choice = np.random.choice([
+            'normal', 'uniform', 'exponential', 'poisson',
+            'beta', 'gamma', 'lognormal', 'weibull'
+        ])
+
+        def sample_distribution(mean, std):
+            if distribution_choice == 'normal':
+                return np.random.normal(loc=mean, scale=std)
+            elif distribution_choice == 'uniform':
+                return np.random.uniform(low=mean - std, high=mean + std)
+            elif distribution_choice == 'exponential':
+                return np.random.exponential(scale=np.maximum(std, 1e-3))
+            elif distribution_choice == 'poisson':
+                lam = np.maximum(mean, std)
+                return np.random.poisson(lam=lam)
+            elif distribution_choice == 'beta':
+                a = (mean * (1 - mean) / np.maximum(std**2, 1e-4) - 1) * mean
+                b = a * (1 / np.maximum(mean, 1e-3) - 1)
+                a = np.maximum(a, 1e-3)
+                b = np.maximum(b, 1e-3)
+                return np.random.beta(a, b)
+            elif distribution_choice == 'gamma':
+                shape = (mean / np.maximum(std, 1e-3))**2
+                scale = np.maximum(std, 1e-3)**2 / np.maximum(mean, 1e-3)
+                return np.random.gamma(shape=shape, scale=scale)
+            elif distribution_choice == 'lognormal':
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    sigma = np.sqrt(np.log(1 + (std / np.maximum(mean, 1e-3))**2))
+                    mu = np.log(np.maximum(mean, 1e-3)) - 0.5 * sigma**2
+                    return np.random.lognormal(mean=mu, sigma=sigma)
+            elif distribution_choice == 'weibull':
+                shape = 1.5
+                scale = mean / np.exp(np.log(2) / shape)
+                return np.random.weibull(a=shape) * scale
+            else:
+                return mean  # fallback: return mean if unknown
+
+        hp_samples = np.array([sample_distribution(m, s) for m, s in zip(meanP_hp, stdP_hp)])
+        pv_samples = np.array([sample_distribution(m, s) for m, s in zip(meanP_pv, stdP_pv)])
+
+        df_sample = pd.DataFrame({
+            'P_HEATPUMP_NORM': hp_samples,
+            'P_PV_NORM': pv_samples
+        }, index=timesteps)
+
+        sample_profiles.append(df_sample)
+
+    return sample_profiles
+
 
 
 
@@ -357,6 +435,321 @@ def montecarlo_analysis_with_violations(
             const_load_household,
             const_load_heatpump,
             heatpump_scaling_factors_df,
+        )
+        for sample_profile in tqdm(mc_samples, desc="Processing samples")
+    )
+
+    # Combine results from all samples
+    for single_sample_result in results_and_violations:
+        (
+            _loads_df, _buses_df, _lines_df, _trafos_df,  # Other results (optional to use)
+            sample_mc_line_results,
+            sample_total_violations,
+            sample_line_violations,
+            sample_trafo_violations
+        ) = single_sample_result
+
+    # Add sample line results to combined_mc_line_results
+    for line_idx, results in sample_mc_line_results.items():
+        for result in results:
+            combined_mc_line_results.append({
+                'line': line_idx,
+                'time_step': result['time_step'],
+                'loading_percent': result['loading_percent']
+            })
+    
+    # Convert combined_mc_line_results into a DataFrame
+    mc_line_results_df = pd.DataFrame(combined_mc_line_results)
+
+    # Process results
+    all_results = [res[:-3] for res in results_and_violations]
+    violation_counts = [res[-3] for res in results_and_violations]
+    line_violations_list = [res[-2] for res in results_and_violations]
+    trafo_violations_list = [res[-1] for res in results_and_violations]
+    #print(f"trafo_violations_list: {trafo_violations_list}")
+
+    # Aggregate line and transformer violations
+    for line_violations in line_violations_list:
+        for line_idx, times in line_violations.items():
+            if line_idx not in overall_line_violations:
+                overall_line_violations[line_idx] = {}
+            for t, count in times.items():
+                overall_line_violations[line_idx][t] = overall_line_violations[line_idx].get(t, 0) + count
+
+
+    for trafo_violations in trafo_violations_list:
+        for t, count in trafo_violations.items():
+            overall_trafo_violations[t] = overall_trafo_violations.get(t, 0) + count
+
+    #print(f"overall_trafo_violations: {overall_trafo_violations}")
+
+    # Find maximum violations
+    max_violations_line = max(
+        ((line, t, count) for line, times in overall_line_violations.items() for t, count in times.items()),
+        key=lambda x: x[2],
+        default=(None, None, 0),
+    )
+
+
+    # Log violations to a file
+    with open(log_file, "w") as f:
+        f.write("Line Constraint Violations:\n")
+        for line_idx, times in overall_line_violations.items():
+            for t, count in times.items():
+                f.write(f"Line {line_idx}: Time Step {t}, {count} violations\n")
+
+        f.write("\nTransformer Constraint Violations:\n")
+        for t, count in overall_trafo_violations.items():
+            f.write(f"Time Step {t}, {count} violations\n")
+
+        f.write("\nMaximum Violations:\n")
+        f.write(f"Line {max_violations_line[0]}, Time Step {max_violations_line[1]}: {max_violations_line[2]} violations\n")
+
+
+    # Calculate the number of simulations with at least one violation
+    num_simulations_with_violations = sum(1 for count in violation_counts if count > 0)
+
+    # Get total constraints checked
+    num_line_constraints = len(net.line)  # Total number of lines
+    num_trafo_constraints = len(net.trafo)  # Total number of transformers
+    number_of_constraints = num_line_constraints + num_trafo_constraints
+    # Calculate probability of constraint violation
+    total_violations = sum(violation_counts)
+    # Calculate total number of constraints checked
+    total_constraints = len(mc_samples) * len(time_steps) * number_of_constraints
+    # Calculate the probability of a single constraint being violated
+    violation_probability = total_violations / total_constraints
+
+    violation_probability_samples = num_simulations_with_violations / len(mc_samples)
+
+    total_time = time.time() - start_time
+
+    # Calculate violation probabilities
+    # print("Overall Line Violations:")
+    # Extract line_indices from mc_line_results_df
+    line_indices = mc_line_results_df['line'].unique()
+    for line_idx, times in overall_line_violations.items():
+        print(f"Line {line_idx}: {times}")
+    # Aggregate violation probabilities
+    violations_df = aggregate_line_violations(overall_line_violations, len(mc_samples), time_steps, line_indices)
+    print("Aggregated Violations DataFrame:")
+    print(violations_df.head(20))
+    violations_df['violation_probability_percent'] = violations_df['violation_probability'] * 100
+
+    # Aggregate transformer violations into a DataFrame
+    trafo_violations_df = aggregate_trafo_violations(overall_trafo_violations, len(mc_samples), time_steps)
+    # Add a probability column to the transformer violations DataFrame
+    trafo_violations_df['violation_probability_percent'] = trafo_violations_df['violation_probability'] * 100
+    # Print or log transformer violations
+    print("Transformer Violations DataFrame:")
+    print(trafo_violations_df.head(20))
+                                                     
+
+    print(f"Monte Carlo analysis completed for {len(mc_samples)} samples in parallel.")
+    print(f"Total time taken: {total_time:.2f} seconds.")
+    # print(f"Probability of constraint violation: {violation_probability:.4f}")
+    print(f"Violation log saved to {log_file}")
+    
+
+    return all_results, violation_probability, violations_df, trafo_violations_df, overall_line_violations, mc_line_results_df
+
+
+########################################################################################
+# LDF Monte Carlo Analysis with violations
+########################################################################################
+
+def run_single_ldf_sample_with_violation(
+    net, time_steps, sample_profile, opf_results, heatpump_scaling_factors_df, const_load_household_P, const_load_household_Q
+):
+    import pandapower as pp
+    import numpy as np
+    import pandas as pd
+
+    net = net.deepcopy()
+
+    # === Preserve household P/Q controllers ===
+    print("\n[DEBUG] Controllers before modification:")
+    for idx, row in net.controller.iterrows():
+        print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
+
+    # === Drop all controllers ===
+    net.controller.drop(net.controller.index, inplace=True)
+    print("\n[DEBUG] Controllers after drop:")
+    for idx, row in net.controller.iterrows():
+        print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
+
+    ConstControl(
+        net,
+        element="load",
+        variable="p_mw",
+        element_index=const_load_household_P.element_index,
+        profile_name=const_load_household_P.profile_name,
+        data_source=const_load_household_P.data_source
+    )
+
+    ConstControl(
+        net,
+        element="load",
+        variable="q_mvar",
+        element_index=const_load_household_Q.element_index,
+        profile_name=const_load_household_Q.profile_name,
+        data_source=const_load_household_Q.data_source
+    )
+    
+    print("\n[DEBUG] Controllers after restoration:")
+    for idx, row in net.controller.iterrows():
+        print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
+
+    # Extract OPF dispatch results
+    flexible_load_dispatch = {
+        t: opf_results['flexible_load_p'][t] for t in time_steps
+    }    
+    pv_gen_dispatch = {
+        t: opf_results['pv_gen'][t] for t in time_steps
+    }    
+    pv_bus_map = dict(zip(net.sgen.bus.values, net.sgen.index))  # Map bus -> sgen index
+
+    # Violation tracking
+    line_violations = {}
+    trafo_violations = {}
+    total_violations = 0
+    mc_line_results = {line_idx: [] for line_idx in net.line.index}
+
+    # Results storage
+    sample_results = {'loads': [], 'buses': [], 'lines': [], 'trafos': []}
+    flexible_time_synchronized_loads_P = {t: {} for t in time_steps}
+    flexible_time_synchronized_loads_Q = {t: {} for t in time_steps}
+
+    for t in time_steps:
+        if not net.controller.empty:
+            for _, controller in net.controller.iterrows():
+                controller.object.time_step(net, time=t)
+
+
+        # Track initial HP dispatch per bus from controllers
+        for load in net.load.itertuples():
+            bus = load.bus
+            if load.controllable:
+                flexible_time_synchronized_loads_P[t][bus] = (
+                    flexible_time_synchronized_loads_P[t].get(bus, 0.0) + load.p_mw
+                )
+                flexible_time_synchronized_loads_Q[t][bus] = (
+                    flexible_time_synchronized_loads_Q[t].get(bus, 0.0) + load.q_mvar
+                )
+
+    for t in time_steps:
+        for load_index, scaling_data in heatpump_scaling_factors_df.iterrows():
+            scaling_factor = scaling_data['p_mw']
+            bus = scaling_data['bus']
+
+            try:
+                sampled_hp = sample_profile.loc[t].at['P_HEATPUMP_NORM'] * scaling_factor * par.hp_scaling
+                nominal_hp_dispatch = flexible_load_dispatch[t].get(bus, 0.0)
+                nominal_hp_demand = flexible_time_synchronized_loads_P[t].get(bus, 0.0) * (1 / par.tsnet_eff)
+
+                adjusted_hp = max(0.0, nominal_hp_dispatch + (sampled_hp - nominal_hp_demand))
+                net.load.at[load_index, 'p_mw'] = float(adjusted_hp)
+
+                # Update the load with active and reactive power
+                net.load.at[load_index, 'q_mvar'] = float(adjusted_hp * par.Q_scaling)
+                
+
+                print(
+                    f"Time step {t}, Bus {bus}: "
+                    f"Nominal heatpump = {nominal_hp_dispatch}, "
+                    f"Nominal heat demand = {nominal_hp_demand}, "
+                    f"Sampled heat demand = {sampled_hp}, "
+                    f"Adjusted load = {adjusted_hp}"
+                )  # Debug statement
+
+                if t == 166:
+                    print(f"Assigned adjusted load {adjusted_hp} to load index {load_index}, bus {bus}")
+                    print(f"Load with index {load_index} is now {net.load.at[load_index, 'p_mw']}")
+
+            except Exception as e:
+                print(f"Error updating HP at load {load_index}, bus {bus}, t={t}: {e}")
+                continue
+                
+
+
+        # === Apply PV Generation Sample (Curtail if needed) ===
+        for bus, sgen_idx in pv_bus_map.items():
+            try:
+                pv_dispatch_val = pv_gen_dispatch[t].get(bus, 0.0)
+                pv_sampled_val = sample_profile.loc[t].at['P_PV_NORM'] * net.sgen.at[sgen_idx, 'p_mw']
+                net.sgen.at[sgen_idx, 'p_mw'] = min(pv_sampled_val, pv_dispatch_val)
+            except Exception as e:
+                print(f"Error updating PV at bus {bus}, time {t}: {e}")
+                continue
+
+        # Run power flow
+        try:
+            pp.runpp(net, check_connectivity=False, verbose=False)
+        except pp.optimality.PandapowerRunError:
+            total_violations += 1
+            print(f"[ERROR] Power flow failed at t={t}")
+            continue
+
+        # Save line loadings
+        for line_idx, loading in net.res_line['loading_percent'].items():
+            mc_line_results[line_idx].append({'time_step': t, 'loading_percent': loading})
+            if loading > 100:
+                total_violations += 1
+                line_violations.setdefault(line_idx, {}).setdefault(t, 0)
+                line_violations[line_idx][t] += 1
+
+        # Save trafo violations
+        for trafo_idx, loading in net.res_trafo['loading_percent'].items():
+            if loading > par.max_trafo_loading * 100:
+                total_violations += 1
+                trafo_violations[t] = trafo_violations.get(t, 0) + 1
+
+        # Save result snapshots
+        sample_results['loads'].append(net.res_load[['p_mw']].assign(time_step=t))
+        sample_results['buses'].append(net.res_bus[['vm_pu', 'va_degree']].assign(time_step=t))
+        sample_results['lines'].append(net.res_line[['loading_percent', 'i_ka']].assign(time_step=t))
+        sample_results['trafos'].append(net.res_trafo[['loading_percent']].assign(time_step=t))
+
+    return (
+        pd.concat(sample_results['loads'], ignore_index=True),
+        pd.concat(sample_results['buses'], ignore_index=True),
+        pd.concat(sample_results['lines'], ignore_index=True),
+        pd.concat(sample_results['trafos'], ignore_index=True),
+        mc_line_results,
+        total_violations,
+        line_violations,
+        trafo_violations,
+    )
+
+def ldf_montecarlo_analysis_with_violations(
+    net,
+    time_steps,
+    opf_results,
+    heatpump_scaling_factors_df,
+    const_load_household_P, 
+    const_load_household_Q,
+    mc_samples,
+    n_jobs,
+    log_file,
+):
+
+    # Initialize log storage
+    overall_line_violations = {}
+    overall_trafo_violations = {}
+    combined_mc_line_results = []
+    # Start timing
+    start_time = time.time()
+
+    # Use joblib with tqdm for parallel processing
+    results_and_violations = Parallel(n_jobs=n_jobs)(
+        delayed(run_single_ldf_sample_with_violation)(
+            net,
+            time_steps,
+            sample_profile,
+            opf_results,
+            heatpump_scaling_factors_df,
+            const_load_household_P, 
+            const_load_household_Q
         )
         for sample_profile in tqdm(mc_samples, desc="Processing samples")
     )
