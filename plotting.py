@@ -21,7 +21,7 @@ from matplotlib import rcParams
 all_results_drcc_4 = rs.load_optim_results("mc_results_drcc_1_e_05.pkl")
 all_results_drcc_3 = rs.load_optim_results("mc_results_drcc_1_e_10.pkl")
 all_results_drcc_2 = rs.load_optim_results("mc_results_drcc_1_e_15.pkl")
-all_results_drcc_1 = rs.load_optim_results("mc_results_drcc_0_e_0.pkl")
+all_results_drcc_1 = rs.load_optim_results("mc_results_drcc_0_e_15.pkl")
 
 trafo_loading_percentages_drcc_1 = [
     result[3]['loading_percent'] for result in all_results_drcc_1
@@ -65,7 +65,7 @@ rcParams['mathtext.bf'] = 'Times New Roman:bold'
 
 # Create the box plot
 plt.figure(figsize=(10, 6))
-boxplot = plt.boxplot(data, labels=labels, patch_artist=True, showfliers=False, vert=False)
+boxplot = plt.boxplot(data, labels=labels, patch_artist=True, showfliers=True, vert=False)
 # Set the fill color to gray for the boxes
 for box in boxplot['boxes']:
     box.set_facecolor('gray')
@@ -84,7 +84,7 @@ plt.xlabel('Transformer Loading Percentage (%)', fontsize=22)
 plt.yticks(fontsize=20)
 plt.xticks(ticks=range(0, 101, 20), fontsize=18)
 plt.grid(axis='x')
-plt.xlim(0, 100)
+#plt.xlim(0, 100)
 plt.tight_layout()
 plt.show()
 

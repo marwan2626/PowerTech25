@@ -50,7 +50,7 @@ def generate_samples(df_season_heatpump_prognosis):
     # Randomly choose a distribution for each sample and generate data
     for i in range(n_samples):
         # Randomly choose the distribution for the current sample
-        distribution_choice = np.random.choice(['normal', 'uniform', 'exponential', 'poisson', 'beta', 'gamma', 'lognormal', 'weibull'])
+        distribution_choice = np.random.choice(['normal', 'uniform', 'exponential', 'poisson', 'beta', 'gamma', 'lognormal'])
 
         if distribution_choice == 'normal':
             samples = np.random.normal(loc=meanP, scale=stdP, size=len(meanP))
@@ -109,20 +109,20 @@ def generate_samples_ldf(df_season_heatpump_prognosis, df_season_pv_prognosis):
     import pandas as pd
 
     # Normalize heat pump profile
-    max_mean_hp = df_season_heatpump_prognosis['meanP'].max()
-    df_season_heatpump_prognosis['meanP_norm'] = df_season_heatpump_prognosis['meanP'] / max_mean_hp
-    df_season_heatpump_prognosis['stdP_norm'] = df_season_heatpump_prognosis['stdP'] / max_mean_hp
+    # max_mean_hp = df_season_heatpump_prognosis['meanP'].max()
+    # df_season_heatpump_prognosis['meanP_norm'] = df_season_heatpump_prognosis['meanP'] / max_mean_hp
+    # df_season_heatpump_prognosis['stdP_norm'] = df_season_heatpump_prognosis['stdP'] / max_mean_hp
 
-    meanP_hp = df_season_heatpump_prognosis['meanP_norm'].values
-    stdP_hp = df_season_heatpump_prognosis['stdP_norm'].values
+    meanP_hp = df_season_heatpump_prognosis['meanP_NORM'].values
+    stdP_hp = df_season_heatpump_prognosis['stdP_NORM'].values
 
     # Normalize PV profile
-    max_mean_pv = df_season_pv_prognosis['meanP'].max()
-    df_season_pv_prognosis['meanP_norm'] = df_season_pv_prognosis['meanP'] / max_mean_pv
-    df_season_pv_prognosis['stdP_norm'] = df_season_pv_prognosis['stdP'] / max_mean_pv
+    # max_mean_pv = df_season_pv_prognosis['meanP'].max()
+    # df_season_pv_prognosis['meanP_NORM'] = df_season_pv_prognosis['meanP'] / max_mean_pv
+    # df_season_pv_prognosis['stdP_NORM'] = df_season_pv_prognosis['stdP'] / max_mean_pv
 
-    meanP_pv = df_season_pv_prognosis['meanP_norm'].values
-    stdP_pv = df_season_pv_prognosis['stdP_norm'].values
+    meanP_pv = df_season_pv_prognosis['P_PV_NORM'].values
+    stdP_pv = df_season_pv_prognosis['stdP_NORM'].values
 
     timesteps = df_season_heatpump_prognosis.index  # Assume same for PV
     n_samples = par.N_MC  # Number of Monte Carlo samples
@@ -131,8 +131,7 @@ def generate_samples_ldf(df_season_heatpump_prognosis, df_season_pv_prognosis):
 
     for _ in range(n_samples):
         distribution_choice = np.random.choice([
-            'normal', 'uniform', 'exponential', 'poisson',
-            'beta', 'gamma', 'lognormal', 'weibull'
+            'normal', 'uniform'
         ])
 
         def sample_distribution(mean, std):
@@ -169,6 +168,9 @@ def generate_samples_ldf(df_season_heatpump_prognosis, df_season_pv_prognosis):
 
         hp_samples = np.array([sample_distribution(m, s) for m, s in zip(meanP_hp, stdP_hp)])
         pv_samples = np.array([sample_distribution(m, s) for m, s in zip(meanP_pv, stdP_pv)])
+
+        hp_samples = np.maximum(hp_samples, 0.0)
+        pv_samples = np.maximum(pv_samples, 0.0)
 
         df_sample = pd.DataFrame({
             'P_HEATPUMP_NORM': hp_samples,
@@ -262,6 +264,7 @@ def run_single_sample_with_violation(
     net, time_steps, sample_profile, opf_results, const_load_household, const_load_heatpump, heatpump_scaling_factors_df
 ):
     net = net.deepcopy()
+    print(f'Heat pump scaling factors: {heatpump_scaling_factors_df}')
 
     # Extract OPF results
     # Extract flexible loads (heat pump dispatch) from OPF results
@@ -559,24 +562,25 @@ def montecarlo_analysis_with_violations(
 ########################################################################################
 
 def run_single_ldf_sample_with_violation(
-    net, time_steps, sample_profile, opf_results, heatpump_scaling_factors_df, const_load_household_P, const_load_household_Q
+    net, original_sgen_p_mw, time_steps, sample_profile, opf_results, heatpump_scaling_factors_df, const_load_household_P, const_load_household_Q
 ):
     import pandapower as pp
     import numpy as np
     import pandas as pd
 
     net = net.deepcopy()
+    #print(f'Heat pump scaling factors: {heatpump_scaling_factors_df}')
 
-    # === Preserve household P/Q controllers ===
-    print("\n[DEBUG] Controllers before modification:")
-    for idx, row in net.controller.iterrows():
-        print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
+    # # === Preserve household P/Q controllers ===
+    # print("\n[DEBUG] Controllers before modification:")
+    # for idx, row in net.controller.iterrows():
+    #     print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
 
-    # === Drop all controllers ===
-    net.controller.drop(net.controller.index, inplace=True)
-    print("\n[DEBUG] Controllers after drop:")
-    for idx, row in net.controller.iterrows():
-        print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
+    # # === Drop all controllers ===
+    # net.controller.drop(net.controller.index, inplace=True)
+    # print("\n[DEBUG] Controllers after drop:")
+    # for idx, row in net.controller.iterrows():
+    #     print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
 
     ConstControl(
         net,
@@ -596,18 +600,23 @@ def run_single_ldf_sample_with_violation(
         data_source=const_load_household_Q.data_source
     )
     
-    print("\n[DEBUG] Controllers after restoration:")
-    for idx, row in net.controller.iterrows():
-        print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
+    # print("\n[DEBUG] Controllers after restoration:")
+    # for idx, row in net.controller.iterrows():
+    #     print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
+
+    #print(f'heatpump_scaling_factors_df: {heatpump_scaling_factors_df}')
 
     # Extract OPF dispatch results
     flexible_load_dispatch = {
         t: opf_results['flexible_load_p'][t] for t in time_steps
-    }    
+    }
+    nominal_heat_demand = {
+        t: opf_results['total_heat_demand'][t] for t in time_steps
+    }
+    heat_demand_scaling = 1 / par.tsnet_eff    
     pv_gen_dispatch = {
         t: opf_results['pv_gen'][t] for t in time_steps
     }    
-    pv_bus_map = dict(zip(net.sgen.bus.values, net.sgen.index))  # Map bus -> sgen index
 
     # Violation tracking
     line_violations = {}
@@ -645,26 +654,32 @@ def run_single_ldf_sample_with_violation(
             try:
                 sampled_hp = sample_profile.loc[t].at['P_HEATPUMP_NORM'] * scaling_factor * par.hp_scaling
                 nominal_hp_dispatch = flexible_load_dispatch[t].get(bus, 0.0)
-                nominal_hp_demand = flexible_time_synchronized_loads_P[t].get(bus, 0.0) * (1 / par.tsnet_eff)
+                nominal_hp_demand = nominal_heat_demand[t].get(bus, 0.0)
 
-                adjusted_hp = max(0.0, nominal_hp_dispatch + (sampled_hp - nominal_hp_demand))
-                net.load.at[load_index, 'p_mw'] = float(adjusted_hp)
+                # adjusted_hp = max(0.0, nominal_hp_dispatch + (sampled_hp-nominal_hp_demand))
+                # net.load.at[load_index, 'p_mw'] = float(adjusted_hp)
+
+                excess = sampled_hp - nominal_hp_demand
+                adjustment = max(0.0, excess)
+
+                adjusted_hp = nominal_hp_dispatch + adjustment
 
                 # Update the load with active and reactive power
                 net.load.at[load_index, 'q_mvar'] = float(adjusted_hp * par.Q_scaling)
                 
-
-                print(
-                    f"Time step {t}, Bus {bus}: "
-                    f"Nominal heatpump = {nominal_hp_dispatch}, "
-                    f"Nominal heat demand = {nominal_hp_demand}, "
-                    f"Sampled heat demand = {sampled_hp}, "
-                    f"Adjusted load = {adjusted_hp}"
-                )  # Debug statement
+                if t == 166:
+                    print(
+                        f"Time step {t}, Bus {bus}: "
+                        f"Nominal heatpump dsipatch = {nominal_hp_dispatch}, "
+                        f"Nominal heat demand = {nominal_hp_demand}, "
+                        f"Sampled heat demand = {sampled_hp}, "
+                        f"Adjusted load = {adjusted_hp}"
+                    )  # Debug statement
 
                 if t == 166:
                     print(f"Assigned adjusted load {adjusted_hp} to load index {load_index}, bus {bus}")
                     print(f"Load with index {load_index} is now {net.load.at[load_index, 'p_mw']}")
+                
 
             except Exception as e:
                 print(f"Error updating HP at load {load_index}, bus {bus}, t={t}: {e}")
@@ -673,14 +688,30 @@ def run_single_ldf_sample_with_violation(
 
 
         # === Apply PV Generation Sample (Curtail if needed) ===
-        for bus, sgen_idx in pv_bus_map.items():
+        for sgen_idx, row in net.sgen.iterrows():
             try:
+                bus = row['bus']
                 pv_dispatch_val = pv_gen_dispatch[t].get(bus, 0.0)
-                pv_sampled_val = sample_profile.loc[t].at['P_PV_NORM'] * net.sgen.at[sgen_idx, 'p_mw']
-                net.sgen.at[sgen_idx, 'p_mw'] = min(pv_sampled_val, pv_dispatch_val)
+                pv_sample_norm = sample_profile.loc[t].at['P_PV_NORM']
+                installed_capacity = original_sgen_p_mw.at[sgen_idx]
+
+                pv_sampled_val = pv_sample_norm * installed_capacity
+                #pv_final = max(0.0, min(pv_sampled_val, pv_dispatch_val))
+                pv_final = pv_sampled_val
+
+                net.sgen.at[sgen_idx, 'p_mw'] = pv_final
+
+                # print(f"Time {t}, SGen {sgen_idx}, Bus {bus}: "
+                #     f"Dispatch = {pv_dispatch_val:.4f}, "
+                #     f"Sampled (normalized) = {pv_sample_norm:.4f}, "
+                #     f"Installed Capacity = {installed_capacity:.4f}, "
+                #     f"Sampled = {pv_sampled_val:.4f}, "
+                #     f"Final = {pv_final:.4f}")
+
             except Exception as e:
-                print(f"Error updating PV at bus {bus}, time {t}: {e}")
+                print(f"Error updating SGen {sgen_idx} at time {t}: {e}")
                 continue
+
 
         # Run power flow
         try:
@@ -693,14 +724,14 @@ def run_single_ldf_sample_with_violation(
         # Save line loadings
         for line_idx, loading in net.res_line['loading_percent'].items():
             mc_line_results[line_idx].append({'time_step': t, 'loading_percent': loading})
-            if loading > 100:
+            if loading > 80:
                 total_violations += 1
                 line_violations.setdefault(line_idx, {}).setdefault(t, 0)
                 line_violations[line_idx][t] += 1
 
         # Save trafo violations
         for trafo_idx, loading in net.res_trafo['loading_percent'].items():
-            if loading > par.max_trafo_loading * 100:
+            if loading > 80:
                 total_violations += 1
                 trafo_violations[t] = trafo_violations.get(t, 0) + 1
 
@@ -723,6 +754,7 @@ def run_single_ldf_sample_with_violation(
 
 def ldf_montecarlo_analysis_with_violations(
     net,
+    original_sgen_p_mw,
     time_steps,
     opf_results,
     heatpump_scaling_factors_df,
@@ -744,6 +776,7 @@ def ldf_montecarlo_analysis_with_violations(
     results_and_violations = Parallel(n_jobs=n_jobs)(
         delayed(run_single_ldf_sample_with_violation)(
             net,
+            original_sgen_p_mw,
             time_steps,
             sample_profile,
             opf_results,

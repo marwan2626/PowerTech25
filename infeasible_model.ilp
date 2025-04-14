@@ -1,25 +1,65 @@
 \ Model opf_with_ldf_lc_copy
 \ LP format - for model browsing. Use MPS format to capture full model detail.
 Minimize
-  0 Q_branch[29,3]
+ 
 Subject To
- P_accumulated_29_5: - pv_gen_29[5] - pv_gen_29[7] - pv_gen_29[22]
-   - pv_gen_29[28] + P_accumulated[29,5] = -0.00649206910417051
- P_send_calc_3: P_branch[29,3] - P_accumulated[29,5] = 0
- line_loading_29_3: - 534.5835825829868 S_branch[29,3] + Line_loading[29,3]
-   = 0
- line_loading_limit_29_3: Line_loading[29,3] <= 0
+ P_accumulated_65_15: - pv_gen_65[1] - pv_gen_65[3] - pv_gen_65[4]
+   - pv_gen_65[5] - pv_gen_65[6] - pv_gen_65[7] - pv_gen_65[8]
+   - pv_gen_65[9] - pv_gen_65[10] - pv_gen_65[11] - pv_gen_65[12]
+   - pv_gen_65[13] - pv_gen_65[14] - pv_gen_65[16] - pv_gen_65[17]
+   - pv_gen_65[19] - pv_gen_65[20] - pv_gen_65[21] - pv_gen_65[22]
+   - pv_gen_65[23] - pv_gen_65[24] - pv_gen_65[25] - pv_gen_65[26]
+   - pv_gen_65[27] - pv_gen_65[28] - pv_gen_65[29] - pv_gen_65[30]
+   - pv_gen_65[31] - pv_gen_65[32] - pv_gen_65[33] - pv_gen_65[34]
+   - pv_gen_65[35] - pv_gen_65[36] - pv_gen_65[37] - pv_gen_65[39]
+   - pv_gen_65[40] - pv_gen_65[41] - pv_gen_65[42] - pv_gen_65[43]
+   + flexible_load_P_65[32] + flexible_load_P_65[33]
+   + flexible_load_P_65[34] + flexible_load_P_65[37]
+   + flexible_load_P_65[42] + flexible_load_P_65[16]
+   + flexible_load_P_65[24] + P_accumulated[65,15] = -0.3437601171324263
+ R59907: P_trafo[65,0] - P_accumulated[65,15] = 0
+ S_trafo_limit_65_0: [ P_trafo[65,0] ^2 + Q_trafo[65,0] ^2 ] <= 0.1024
 Bounds
- -infinity <= pv_gen_29[5] <= 6.67518e-07
- -infinity <= pv_gen_29[7] <= 5.00638e-07
- -infinity <= pv_gen_29[22] <= 5.00638e-07
- -infinity <= pv_gen_29[28] <= 5.00638e-07
- P_branch[29,3] free
- Q_branch[29,3] free
- S_branch[29,3] free
- Line_loading[29,3] free
- P_accumulated[29,5] free
-General Constraints
- S_branch_calc_29_3: S_branch[29,3] = NORM ( 2 ) ( P_branch[29,3] ,
-   Q_branch[29,3] )
+ -infinity <= pv_gen_65[1] <= 0.000101867
+ -infinity <= pv_gen_65[3] <= 0.000101867
+ -infinity <= pv_gen_65[4] <= 0.000101867
+ -infinity <= pv_gen_65[5] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[6] <= 0.000101867
+ -infinity <= pv_gen_65[7] <= 0.000101867
+ -infinity <= pv_gen_65[8] <= 0.000101867
+ -infinity <= pv_gen_65[9] <= 0.000101867
+ -infinity <= pv_gen_65[10] <= 0.000101867
+ -infinity <= pv_gen_65[11] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[12] <= 0.000101867
+ -infinity <= pv_gen_65[13] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[14] <= 0.000101867
+ -infinity <= pv_gen_65[16] <= 0.000101867
+ -infinity <= pv_gen_65[17] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[19] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[20] <= 0.000101867
+ -infinity <= pv_gen_65[21] <= 0.000203734
+ -infinity <= pv_gen_65[22] <= 0.000101867
+ -infinity <= pv_gen_65[23] <= 0.000101867
+ -infinity <= pv_gen_65[24] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[25] <= 0.000101867
+ -infinity <= pv_gen_65[26] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[27] <= 0.000101867
+ -infinity <= pv_gen_65[28] <= 0.000101867
+ -infinity <= pv_gen_65[29] <= 0.000101867
+ -infinity <= pv_gen_65[30] <= 0.000101867
+ -infinity <= pv_gen_65[31] <= 0.000101867
+ -infinity <= pv_gen_65[32] <= 0.000101867
+ -infinity <= pv_gen_65[33] <= 0.000101867
+ -infinity <= pv_gen_65[34] <= 0.000101867
+ -infinity <= pv_gen_65[35] <= 1.6977828364298582e-04
+ -infinity <= pv_gen_65[36] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[37] <= 1.3582262691438866e-04
+ -infinity <= pv_gen_65[39] <= 1.6977828364298582e-04
+ -infinity <= pv_gen_65[40] <= 1.6977828364298582e-04
+ -infinity <= pv_gen_65[41] <= 1.6977828364298582e-04
+ -infinity <= pv_gen_65[42] <= 1.6977828364298582e-04
+ -infinity <= pv_gen_65[43] <= 1.3582262691438866e-04
+ P_trafo[65,0] free
+ Q_trafo[65,0] free
+ P_accumulated[65,15] free
 End

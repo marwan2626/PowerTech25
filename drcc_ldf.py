@@ -415,6 +415,8 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
     ts_in_results = {}
     ts_out_results = {}
     ts_sof_results = {}
+    total_heat_demand_results = {}
+
 
     # Temporary dictionary to store updated load values per time step
     flexible_time_synchronized_loads_P = {t: {} for t in time_steps}
@@ -526,6 +528,7 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
         # Define flexible load variables with global peak limit (par.hp_max_power)
         flexible_load_P_vars[t] = model.addVars(
             flexible_load_buses,
+            lb=0,
             ub=par.hp_max_power,
             name=f'flexible_load_P_{t}'
         )
@@ -924,6 +927,15 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
                 for line_idx in net.line.index
             }
 
+            total_heat_demand_results[t] = {}
+            for bus in flexible_load_buses:
+                total_heat_demand_results[t][bus] = (
+                    flexible_time_synchronized_loads_P[t][bus] * heat_demand_scaling
+                    - HNS_vars[t][bus].x
+                )
+
+            
+
         # Return results in a structured format
         results = {
             'pv_gen': pv_gen_results,
@@ -945,7 +957,8 @@ def solve_drcc_opf(net, time_steps, electricity_price, const_pv, const_load_hous
             'thermal_storage_capacity': ts_capacity_results,
             'thermal_storage_in': ts_in_results,
             'thermal_storage_out': ts_out_results,
-            'thermal_storage_sof': ts_sof_results
+            'thermal_storage_sof': ts_sof_results,
+            'total_heat_demand': total_heat_demand_results
         }
 
         # # Save the results to a file

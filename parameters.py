@@ -26,10 +26,10 @@ import numpy as np
 ## GENERAL ## 
 ###############################################################################
 ### NETWORK ###
-hp_scaling = 1 # heat pump scaling factor
-hh_scaling = 1 # household scaling factor
+hp_scaling = 0.55 # heat pump scaling factor
+hh_scaling = 0.75 # household scaling factor
 
-max_trafo_loading = 0.7 # max transformer loading
+#max_trafo_loading = 0.7 # max transformer loading
 
 ### THERMAL SYSTEM ###
 hp_max_power = 0.5 # heat pump max power in MW
@@ -53,10 +53,10 @@ HNS_cost = 10000  # €/MW for HNS
 c_cost = 8000 #€/MWh cost of ts energy storage in €/MWh
 
 ## DRCC ##
-DRCC_FLG = 0 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.15 # CC violation probability
+DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
+epsilon = 0.05 # CC violation probability
 ### FORECAST ###
-N_MC = 100 # number of samples for monte-carlo simulation
+N_MC = 8 # number of samples for monte-carlo simulation
 
 
 # Define reliability parameters

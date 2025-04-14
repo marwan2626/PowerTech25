@@ -613,6 +613,7 @@ def setup_grid_IAS(season):
     # Scale PV Profiles
     df_season_pv_prognosis = df_pv_prognosis[df_pv_prognosis['season'] == season].reset_index(drop=True)
     df_season_pv_prognosis['P_PV_NORM'] = df_season_pv_prognosis['meanP'] / df_pv_prognosis['meanP'].max()
+    df_season_pv_prognosis['stdP_NORM'] = df_season_pv_prognosis['stdP'] / df_pv_prognosis['meanP'].max()
     scaled_pv_profiles = pd.DataFrame(
         df_season_pv_prognosis['P_PV_NORM'].values[:, None] * np.array([net.sgen.loc[i, 'p_mw'] for i in pv_indices]) / par.hh_scaling,
         columns=pv_indices
@@ -760,8 +761,12 @@ def setup_grid_IAS(season):
         print(f"Warning: Electricity price file '{electricity_price_file}' not found.")
         electricity_price = None  # Set to None if missing
 
+    ### Test PV
+    original_sgen_p_mw = net.sgen['p_mw'].copy()
+    #print(f"original_sgen_p_mw: {original_sgen_p_mw}")  # Debug statement
 
-    return net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, df_season_pv_prognosis ,heatpump_scaling_factors_df, T_amb, electricity_price
+
+    return net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const_load_heatpump, const_load_heatpump_Q ,df_household_prognosis, df_season_heatpump_prognosis, df_season_pv_prognosis ,heatpump_scaling_factors_df, T_amb, electricity_price, original_sgen_p_mw
 
 
 
@@ -987,5 +992,7 @@ def setup_grid_IAS_variance(season):
     for load_idx in household_loads.index:
         net.load.at[load_idx, 'p_mw'] = 0
         net.load.at[load_idx, 'q_mvar'] = 0
+
+
 
     return net
