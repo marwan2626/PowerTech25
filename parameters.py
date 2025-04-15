@@ -54,9 +54,9 @@ c_cost = 8000 #€/MWh cost of ts energy storage in €/MWh
 
 ## DRCC ##
 DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.05 # CC violation probability
+epsilon = 0.10 # CC violation probability
 ### FORECAST ###
-N_MC = 8 # number of samples for monte-carlo simulation
+N_MC = 100 # number of samples for monte-carlo simulation
 
 
 # Define reliability parameters

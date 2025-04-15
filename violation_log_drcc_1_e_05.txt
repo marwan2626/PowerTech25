@@ -1,11 +1,261 @@
 Line Constraint Violations:
-Line 24: Time Step 60, 1 violations
-Line 24: Time Step 83, 1 violations
-Line 4: Time Step 83, 1 violations
+Line 4: Time Step 13, 50 violations
+Line 4: Time Step 36, 49 violations
+Line 4: Time Step 37, 44 violations
+Line 4: Time Step 133, 7 violations
+Line 4: Time Step 14, 36 violations
+Line 4: Time Step 61, 24 violations
+Line 4: Time Step 158, 32 violations
+Line 4: Time Step 57, 3 violations
+Line 4: Time Step 131, 8 violations
+Line 4: Time Step 134, 23 violations
+Line 4: Time Step 157, 6 violations
+Line 4: Time Step 45, 1 violations
+Line 4: Time Step 107, 1 violations
+Line 4: Time Step 156, 6 violations
+Line 4: Time Step 155, 5 violations
+Line 4: Time Step 154, 5 violations
+Line 4: Time Step 21, 1 violations
+Line 4: Time Step 52, 1 violations
+Line 4: Time Step 11, 2 violations
+Line 4: Time Step 60, 1 violations
+Line 4: Time Step 84, 1 violations
+Line 4: Time Step 7, 1 violations
+Line 4: Time Step 49, 1 violations
+Line 4: Time Step 38, 1 violations
+Line 4: Time Step 161, 3 violations
+Line 4: Time Step 153, 1 violations
+Line 4: Time Step 62, 1 violations
+Line 4: Time Step 83, 2 violations
+Line 4: Time Step 125, 1 violations
+Line 4: Time Step 135, 1 violations
+Line 4: Time Step 106, 1 violations
+Line 4: Time Step 118, 1 violations
+Line 4: Time Step 130, 1 violations
+Line 4: Time Step 109, 1 violations
+Line 19: Time Step 13, 30 violations
+Line 19: Time Step 36, 17 violations
+Line 19: Time Step 133, 7 violations
+Line 19: Time Step 61, 8 violations
+Line 19: Time Step 131, 8 violations
+Line 19: Time Step 134, 5 violations
+Line 19: Time Step 14, 20 violations
+Line 19: Time Step 37, 10 violations
+Line 19: Time Step 157, 5 violations
+Line 19: Time Step 107, 1 violations
+Line 19: Time Step 158, 9 violations
+Line 19: Time Step 156, 6 violations
+Line 19: Time Step 155, 4 violations
+Line 19: Time Step 154, 5 violations
+Line 19: Time Step 21, 1 violations
+Line 19: Time Step 52, 1 violations
+Line 19: Time Step 11, 2 violations
+Line 19: Time Step 84, 1 violations
+Line 19: Time Step 7, 1 violations
+Line 19: Time Step 49, 1 violations
+Line 19: Time Step 38, 1 violations
+Line 19: Time Step 161, 3 violations
+Line 19: Time Step 125, 1 violations
+Line 19: Time Step 106, 1 violations
 Line 19: Time Step 83, 1 violations
-Line 28: Time Step 83, 1 violations
+Line 19: Time Step 118, 1 violations
+Line 19: Time Step 130, 1 violations
+Line 19: Time Step 109, 1 violations
+Line 24: Time Step 13, 51 violations
+Line 24: Time Step 36, 48 violations
+Line 24: Time Step 37, 42 violations
+Line 24: Time Step 136, 59 violations
+Line 24: Time Step 161, 64 violations
+Line 24: Time Step 133, 11 violations
+Line 24: Time Step 135, 2 violations
+Line 24: Time Step 160, 51 violations
+Line 24: Time Step 14, 39 violations
+Line 24: Time Step 61, 23 violations
+Line 24: Time Step 158, 43 violations
+Line 24: Time Step 57, 10 violations
+Line 24: Time Step 131, 8 violations
+Line 24: Time Step 134, 28 violations
+Line 24: Time Step 130, 2 violations
+Line 24: Time Step 62, 2 violations
+Line 24: Time Step 157, 9 violations
+Line 24: Time Step 45, 1 violations
+Line 24: Time Step 107, 2 violations
+Line 24: Time Step 156, 8 violations
+Line 24: Time Step 12, 1 violations
+Line 24: Time Step 155, 5 violations
+Line 24: Time Step 38, 5 violations
+Line 24: Time Step 109, 2 violations
+Line 24: Time Step 153, 3 violations
+Line 24: Time Step 154, 7 violations
+Line 24: Time Step 21, 1 violations
+Line 24: Time Step 35, 2 violations
+Line 24: Time Step 52, 1 violations
+Line 24: Time Step 11, 2 violations
+Line 24: Time Step 60, 1 violations
+Line 24: Time Step 84, 1 violations
+Line 24: Time Step 7, 1 violations
+Line 24: Time Step 49, 1 violations
+Line 24: Time Step 39, 5 violations
+Line 24: Time Step 9, 1 violations
+Line 24: Time Step 83, 2 violations
+Line 24: Time Step 125, 1 violations
+Line 24: Time Step 86, 2 violations
+Line 24: Time Step 132, 1 violations
+Line 24: Time Step 106, 1 violations
+Line 24: Time Step 59, 1 violations
+Line 24: Time Step 63, 1 violations
+Line 24: Time Step 118, 1 violations
+Line 24: Time Step 129, 1 violations
+Line 28: Time Step 13, 51 violations
+Line 28: Time Step 36, 49 violations
+Line 28: Time Step 37, 44 violations
+Line 28: Time Step 161, 58 violations
+Line 28: Time Step 133, 8 violations
+Line 28: Time Step 14, 38 violations
+Line 28: Time Step 61, 24 violations
+Line 28: Time Step 158, 35 violations
+Line 28: Time Step 57, 5 violations
+Line 28: Time Step 131, 8 violations
+Line 28: Time Step 134, 27 violations
+Line 28: Time Step 130, 2 violations
+Line 28: Time Step 62, 2 violations
+Line 28: Time Step 157, 6 violations
+Line 28: Time Step 45, 1 violations
+Line 28: Time Step 107, 1 violations
+Line 28: Time Step 156, 8 violations
+Line 28: Time Step 12, 1 violations
+Line 28: Time Step 155, 5 violations
+Line 28: Time Step 154, 5 violations
+Line 28: Time Step 21, 1 violations
+Line 28: Time Step 35, 1 violations
+Line 28: Time Step 52, 1 violations
+Line 28: Time Step 11, 2 violations
+Line 28: Time Step 60, 1 violations
+Line 28: Time Step 84, 1 violations
+Line 28: Time Step 7, 1 violations
+Line 28: Time Step 38, 3 violations
+Line 28: Time Step 49, 1 violations
+Line 28: Time Step 39, 3 violations
+Line 28: Time Step 153, 1 violations
+Line 28: Time Step 9, 1 violations
+Line 28: Time Step 160, 1 violations
+Line 28: Time Step 83, 2 violations
+Line 28: Time Step 125, 1 violations
+Line 28: Time Step 135, 1 violations
+Line 28: Time Step 136, 2 violations
+Line 28: Time Step 106, 1 violations
+Line 28: Time Step 86, 1 violations
+Line 28: Time Step 63, 1 violations
+Line 28: Time Step 118, 1 violations
+Line 28: Time Step 109, 1 violations
+Line 33: Time Step 36, 16 violations
+Line 33: Time Step 67, 39 violations
+Line 33: Time Step 37, 10 violations
+Line 33: Time Step 13, 3 violations
+Line 33: Time Step 14, 1 violations
+Line 33: Time Step 21, 1 violations
+Line 33: Time Step 49, 1 violations
+Line 33: Time Step 61, 3 violations
+Line 33: Time Step 135, 1 violations
+Line 33: Time Step 91, 1 violations
+Line 34: Time Step 36, 5 violations
+Line 34: Time Step 21, 1 violations
+Line 34: Time Step 49, 1 violations
+Line 34: Time Step 37, 2 violations
+Line 34: Time Step 135, 1 violations
+Line 35: Time Step 21, 1 violations
+Line 35: Time Step 49, 1 violations
+Line 35: Time Step 36, 1 violations
+Line 35: Time Step 135, 1 violations
+Line 5: Time Step 52, 1 violations
+Line 5: Time Step 7, 1 violations
+Line 5: Time Step 118, 1 violations
+Line 6: Time Step 52, 1 violations
+Line 6: Time Step 7, 1 violations
+Line 6: Time Step 118, 1 violations
+Line 11: Time Step 52, 1 violations
+Line 11: Time Step 7, 1 violations
+Line 11: Time Step 118, 1 violations
+Line 18: Time Step 52, 1 violations
+Line 18: Time Step 7, 1 violations
+Line 18: Time Step 118, 1 violations
+Line 20: Time Step 52, 1 violations
+Line 20: Time Step 7, 1 violations
+Line 20: Time Step 118, 1 violations
+Line 22: Time Step 52, 1 violations
+Line 22: Time Step 7, 1 violations
+Line 22: Time Step 118, 1 violations
 
 Transformer Constraint Violations:
+Time Step 13, 75 violations
+Time Step 36, 77 violations
+Time Step 37, 69 violations
+Time Step 134, 46 violations
+Time Step 135, 50 violations
+Time Step 147, 2 violations
+Time Step 115, 2 violations
+Time Step 133, 5 violations
+Time Step 4, 4 violations
+Time Step 14, 54 violations
+Time Step 61, 32 violations
+Time Step 146, 1 violations
+Time Step 158, 57 violations
+Time Step 159, 47 violations
+Time Step 131, 4 violations
+Time Step 141, 2 violations
+Time Step 25, 2 violations
+Time Step 124, 2 violations
+Time Step 68, 3 violations
+Time Step 126, 4 violations
+Time Step 125, 1 violations
+Time Step 74, 2 violations
+Time Step 152, 2 violations
+Time Step 157, 2 violations
+Time Step 49, 2 violations
+Time Step 72, 3 violations
+Time Step 123, 1 violations
+Time Step 149, 1 violations
+Time Step 151, 2 violations
+Time Step 155, 2 violations
+Time Step 88, 6 violations
+Time Step 153, 3 violations
+Time Step 52, 2 violations
+Time Step 112, 7 violations
+Time Step 76, 2 violations
+Time Step 89, 3 violations
+Time Step 3, 3 violations
+Time Step 154, 4 violations
+Time Step 21, 1 violations
+Time Step 28, 1 violations
+Time Step 167, 2 violations
+Time Step 84, 1 violations
+Time Step 116, 1 violations
+Time Step 7, 1 violations
+Time Step 48, 1 violations
+Time Step 101, 1 violations
+Time Step 113, 1 violations
+Time Step 156, 3 violations
+Time Step 99, 2 violations
+Time Step 51, 2 violations
+Time Step 29, 3 violations
+Time Step 100, 4 violations
+Time Step 160, 1 violations
+Time Step 75, 1 violations
+Time Step 96, 2 violations
+Time Step 16, 1 violations
+Time Step 53, 2 violations
+Time Step 148, 2 violations
+Time Step 140, 1 violations
+Time Step 27, 2 violations
+Time Step 98, 2 violations
+Time Step 50, 1 violations
+Time Step 63, 1 violations
+Time Step 73, 1 violations
+Time Step 92, 1 violations
+Time Step 118, 1 violations
+Time Step 129, 1 violations
+Time Step 91, 1 violations
+Time Step 150, 1 violations
 
 Maximum Violations:
-Line 24, Time Step 60: 1 violations
+Line 24, Time Step 161: 64 violations

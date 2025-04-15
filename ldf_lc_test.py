@@ -22,7 +22,7 @@ net, time_steps, const_pv, const_load_household_P, const_load_household_Q, const
 filename = f"drcc_results_drcc_{par.DRCC_FLG}_{par.epsilon}.pkl"
 drcc_results = rs.load_optim_results(filename)
 
-## DRCC MONTE CARLO ANALYSIS ###
+### DRCC MONTE CARLO ANALYSIS ###
 # mc_samples = mc.generate_samples_ldf(df_season_heatpump_prognosis,df_season_pv_prognosis)
 
 # with open("mc_samples.pkl", "wb") as f:
@@ -43,12 +43,12 @@ all_results_drcc, violation_probability_drcc, violations_df_drcc, trafo_violatio
     const_load_household_Q,
     mc_samples,
     n_jobs=-1,
-    log_file="violation_log_drcc_1_e_05.txt",
+    log_file="violation_log_drcc_1_e_10.txt",
 )
 
 # Save the results to a file
 if all_results_drcc is not None:
-    rs.save_optim_results(all_results_drcc, "mc_results_drcc_1_e_05.pkl")
+    rs.save_optim_results(all_results_drcc, "mc_results_drcc_1_e_10.pkl")
 #pl.plot_ldf_results_plotly(results_variance)
 #pl.plot_ldf_results_plotly(results)
 #pl.plot_ldf_drcc_results_plotly(drcc_results)

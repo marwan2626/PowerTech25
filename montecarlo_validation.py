@@ -131,7 +131,7 @@ def generate_samples_ldf(df_season_heatpump_prognosis, df_season_pv_prognosis):
 
     for _ in range(n_samples):
         distribution_choice = np.random.choice([
-            'normal', 'uniform'
+            'normal', 'uniform', 'student', 'lognormal'
         ])
 
         def sample_distribution(mean, std):
@@ -141,6 +141,10 @@ def generate_samples_ldf(df_season_heatpump_prognosis, df_season_pv_prognosis):
                 return np.random.uniform(low=mean - std, high=mean + std)
             elif distribution_choice == 'exponential':
                 return np.random.exponential(scale=np.maximum(std, 1e-3))
+            elif distribution_choice == 'student':
+                df = 4 
+                t_sample = np.random.standard_t(df)
+                return mean + std * t_sample
             elif distribution_choice == 'poisson':
                 lam = np.maximum(mean, std)
                 return np.random.poisson(lam=lam)
@@ -577,7 +581,7 @@ def run_single_ldf_sample_with_violation(
     #     print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
 
     # # === Drop all controllers ===
-    # net.controller.drop(net.controller.index, inplace=True)
+    net.controller.drop(net.controller.index, inplace=True)
     # print("\n[DEBUG] Controllers after drop:")
     # for idx, row in net.controller.iterrows():
     #     print(f"  Index {idx} | Type: {type(row['object'])} | Object: {row['object']}")
@@ -625,7 +629,13 @@ def run_single_ldf_sample_with_violation(
     mc_line_results = {line_idx: [] for line_idx in net.line.index}
 
     # Results storage
-    sample_results = {'loads': [], 'buses': [], 'lines': [], 'trafos': []}
+    sample_results = {
+        'loads': [],
+        'buses': [],
+        'lines': [],
+        'trafos': [],
+        'sgen': []  # ← add this here
+    }    
     flexible_time_synchronized_loads_P = {t: {} for t in time_steps}
     flexible_time_synchronized_loads_Q = {t: {} for t in time_steps}
 
@@ -634,19 +644,6 @@ def run_single_ldf_sample_with_violation(
             for _, controller in net.controller.iterrows():
                 controller.object.time_step(net, time=t)
 
-
-        # Track initial HP dispatch per bus from controllers
-        for load in net.load.itertuples():
-            bus = load.bus
-            if load.controllable:
-                flexible_time_synchronized_loads_P[t][bus] = (
-                    flexible_time_synchronized_loads_P[t].get(bus, 0.0) + load.p_mw
-                )
-                flexible_time_synchronized_loads_Q[t][bus] = (
-                    flexible_time_synchronized_loads_Q[t].get(bus, 0.0) + load.q_mvar
-                )
-
-    for t in time_steps:
         for load_index, scaling_data in heatpump_scaling_factors_df.iterrows():
             scaling_factor = scaling_data['p_mw']
             bus = scaling_data['bus']
@@ -654,31 +651,35 @@ def run_single_ldf_sample_with_violation(
             try:
                 sampled_hp = sample_profile.loc[t].at['P_HEATPUMP_NORM'] * scaling_factor * par.hp_scaling
                 nominal_hp_dispatch = flexible_load_dispatch[t].get(bus, 0.0)
-                nominal_hp_demand = nominal_heat_demand[t].get(bus, 0.0)
+                nominal_hp_demand = nominal_heat_demand[t].get(bus, 0.0)  * heat_demand_scaling
 
                 # adjusted_hp = max(0.0, nominal_hp_dispatch + (sampled_hp-nominal_hp_demand))
                 # net.load.at[load_index, 'p_mw'] = float(adjusted_hp)
 
                 excess = sampled_hp - nominal_hp_demand
-                adjustment = max(0.0, excess)
+                #adjustment = max(0.0, excess)
+                adjustment = excess
 
-                adjusted_hp = nominal_hp_dispatch + adjustment
+                adjusted_hp = max(0,(nominal_hp_dispatch + adjustment))
+                
+                net.load.at[load_index, 'p_mw'] = float(adjusted_hp)
+
 
                 # Update the load with active and reactive power
                 net.load.at[load_index, 'q_mvar'] = float(adjusted_hp * par.Q_scaling)
                 
-                if t == 166:
-                    print(
-                        f"Time step {t}, Bus {bus}: "
-                        f"Nominal heatpump dsipatch = {nominal_hp_dispatch}, "
-                        f"Nominal heat demand = {nominal_hp_demand}, "
-                        f"Sampled heat demand = {sampled_hp}, "
-                        f"Adjusted load = {adjusted_hp}"
-                    )  # Debug statement
+                # if t == 166:
+                #     print(
+                #         f"Time step {t}, Bus {bus}: "
+                #         f"Nominal heatpump dsipatch = {nominal_hp_dispatch}, "
+                #         f"Nominal heat demand = {nominal_hp_demand}, "
+                #         f"Sampled heat demand = {sampled_hp}, "
+                #         f"Adjusted load = {adjusted_hp}"
+                #     )  # Debug statement
 
-                if t == 166:
-                    print(f"Assigned adjusted load {adjusted_hp} to load index {load_index}, bus {bus}")
-                    print(f"Load with index {load_index} is now {net.load.at[load_index, 'p_mw']}")
+                # if t == 166:
+                #     print(f"Assigned adjusted load {adjusted_hp} to load index {load_index}, bus {bus}")
+                #     print(f"Load with index {load_index} is now {net.load.at[load_index, 'p_mw']}")
                 
 
             except Exception as e:
@@ -714,6 +715,7 @@ def run_single_ldf_sample_with_violation(
 
 
         # Run power flow
+
         try:
             pp.runpp(net, check_connectivity=False, verbose=False)
         except pp.optimality.PandapowerRunError:
@@ -737,6 +739,8 @@ def run_single_ldf_sample_with_violation(
 
         # Save result snapshots
         sample_results['loads'].append(net.res_load[['p_mw']].assign(time_step=t))
+        sample_results['loads'].append(net.res_load[['q_mvar']].assign(time_step=t))
+        sample_results['sgen'].append(net.res_sgen[['p_mw']].assign(time_step=t))  # ← added this
         sample_results['buses'].append(net.res_bus[['vm_pu', 'va_degree']].assign(time_step=t))
         sample_results['lines'].append(net.res_line[['loading_percent', 'i_ka']].assign(time_step=t))
         sample_results['trafos'].append(net.res_trafo[['loading_percent']].assign(time_step=t))
@@ -746,6 +750,7 @@ def run_single_ldf_sample_with_violation(
         pd.concat(sample_results['buses'], ignore_index=True),
         pd.concat(sample_results['lines'], ignore_index=True),
         pd.concat(sample_results['trafos'], ignore_index=True),
+        pd.concat(sample_results['sgen'], ignore_index=True),
         mc_line_results,
         total_violations,
         line_violations,
@@ -790,7 +795,7 @@ def ldf_montecarlo_analysis_with_violations(
     # Combine results from all samples
     for single_sample_result in results_and_violations:
         (
-            _loads_df, _buses_df, _lines_df, _trafos_df,  # Other results (optional to use)
+            _loads_df, _buses_df, _lines_df, _trafos_df, _sgen_df,  # Other results (optional to use)
             sample_mc_line_results,
             sample_total_violations,
             sample_line_violations,
