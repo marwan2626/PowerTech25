@@ -13,7 +13,7 @@ result_files = [
     "drcc_results_drcc_1_0.1.pkl",
     "drcc_results_drcc_1_0.05.pkl"
 ]
-labels = ["Deterministic", "ε = 0.15", "ε = 0.10", "ε = 0.05"]
+labels = ["Deterministic", r'DRCC, $\varepsilon=0.15$', r'DRCC, $\varepsilon=0.10$', r'DRCC, $\varepsilon=0.05$']
 
 # Initialize storage
 all_trafo_loading = []
@@ -24,6 +24,14 @@ rcParams['mathtext.fontset'] = 'custom'
 rcParams['mathtext.rm'] = 'Times New Roman'
 rcParams['mathtext.it'] = 'Times New Roman:italic'
 rcParams['mathtext.bf'] = 'Times New Roman:bold'
+
+# Set font sizes
+rcParams['axes.titlesize'] = 24       # title
+rcParams['axes.labelsize'] = 20       # x/y labels
+rcParams['xtick.labelsize'] = 20      # x tick labels
+rcParams['ytick.labelsize'] = 20      # y tick labels
+rcParams['legend.fontsize'] = 18      # legend text
+rcParams['figure.titlesize'] = 18     # suptitle if used
 
 # Load and extract transformer & line loading values
 for file in result_files:
@@ -46,31 +54,6 @@ for file in result_files:
 medians = np.array([np.median(x) for x in all_trafo_loading])
 maxima = np.array([np.max(x) for x in all_trafo_loading])
 
-# Plot
-plt.figure(figsize=(10, 6))
-
-# Plot lines
-plt.plot(labels, medians, linestyle='--', marker='o', color='black', label="Median")
-plt.plot(labels, maxima, linestyle='-', marker='x', color='black', label="Maximum")
-
-# Fill between median and max (internal variability)
-plt.fill_between(labels, medians, maxima, color="#d3d3d3", alpha=1.0, label="Residual Risk Margin")
-
-# Fill uncertainty margin (between max and 80%), only where max < 80
-plt.fill_between(labels, maxima, 80, where=(maxima < 80), interpolate=True,
-                 color="#a9a9a9", alpha=1.0, label="Uncertainty Margin")
-
-# Add 80% reference line
-plt.axhline(y=80, color='red', linestyle='-', linewidth=1.5, label="Reference Limit (80%)")
-
-# Final formatting
-plt.ylim(50, 90)
-plt.ylabel("Transformer Loading [%]")
-plt.title("Median and Peak Transformer Loading Across Optimization Cases")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
 
 # Bar Plot of Median and Max Transformer Loading with Uncertainty Margin
 x = np.arange(len(labels))  # x locations for the groups
@@ -78,11 +61,11 @@ width = 0.35  # width of the bars
 
 plt.figure(figsize=(10, 6))
 
-# Base bar: median
-plt.bar(x - width/2, medians, width, label='Median', color='gray', edgecolor='black')
+# # Base bar: median
+# plt.bar(x - width/2, medians, width, label='Median', color='gray', edgecolor='black')
 
-# Base bar: max (main bar from 0 to max)
-plt.bar(x + width/2, maxima, width, label='Maximum', color='darkgray', edgecolor='black')
+# # Base bar: max (main bar from 0 to max)
+# plt.bar(x + width/2, maxima, width, label='Maximum', color='darkgray', edgecolor='black')
 
 import matplotlib.patches as mpatches
 
@@ -116,8 +99,7 @@ hatch_patch = mpatches.Patch(facecolor='none', edgecolor='black', hatch='///', l
 # Final formatting
 plt.xticks(x, labels)
 plt.ylabel("Transformer Loading [%]")
-plt.title("Transformer Loading per Optimization Case")
-plt.ylim(50, 90)
+plt.ylim(50, 100)
 plt.grid(True, axis='y')
 
 # Add custom legend

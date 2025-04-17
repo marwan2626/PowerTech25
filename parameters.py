@@ -49,12 +49,12 @@ T_S = 75+273.15 # temperature of the heat source in K
 
 ### Optimization Costs ###
 curtailment_cost = 300  # €/MW for curtailing PV (set higher than import/export costs)
-HNS_cost = 10000  # €/MW for HNS
-c_cost = 8000 #€/MWh cost of ts energy storage in €/MWh
+HNS_cost = 15000  # €/MW for HNS
+c_cost = 10000 #€/MWh cost of ts energy storage in €/MWh
 
 ## DRCC ##
 DRCC_FLG = 1 # DRCC flag, 1 = enable, 0 = disable
-epsilon = 0.10 # CC violation probability
+epsilon = 0.05 # CC violation probability
 ### FORECAST ###
 N_MC = 100 # number of samples for monte-carlo simulation
 
